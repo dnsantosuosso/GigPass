@@ -11,8 +11,8 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAppSelector } from '@/store';
 
 const Index = () => {
-  const { user } = useAppSelector((state) => state.auth);
-  const { role } = useUserRole(user);
+  const { user, session } = useAppSelector((state) => state.auth);
+  const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
 
   const content = (

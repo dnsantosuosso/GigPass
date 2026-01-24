@@ -7,9 +7,9 @@ import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import { useAppSelector } from '@/store';
 
 export default function Dashboard() {
-  const { user, loading } = useAppSelector((state) => state.auth);
+  const { user, session, loading } = useAppSelector((state) => state.auth);
   const navigate = useNavigate();
-  const { role, loading: roleLoading } = useUserRole(user);
+  const { role } = useUserRole(session);
 
   useEffect(() => {
     // Redirect to auth if not authenticated and not loading
@@ -35,17 +35,15 @@ export default function Dashboard() {
   const isAdminRoute = window.location.pathname === '/admin';
 
   // Show Admin Dashboard only on /admin route for admins
-  // Use roleLoading state to determine if we should show admin dashboard
-  if (!roleLoading && role === 'admin' && isAdminRoute) {
+  if (role === 'admin' && isAdminRoute) {
     return <AdminDashboard user={user} />;
   }
 
   // Otherwise show Member Dashboard (with tickets)
-  // Pass roleLoading to prevent sidebar flickering
   return (
     <MemberDashboard
       user={user}
-      isAdmin={!roleLoading && role === 'admin'}
+      isAdmin={role === 'admin'}
     />
   );
 }

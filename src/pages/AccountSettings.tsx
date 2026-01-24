@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
+import { User, Session } from '@supabase/supabase-js';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { ModernSidebar } from '@/components/layout/ModernSidebar';
@@ -20,6 +20,7 @@ import { Loader2, KeyRound, User as UserIcon, ArrowLeft } from 'lucide-react';
 
 export default function AccountSettings() {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [updatingProfile, setUpdatingProfile] = useState(false);
@@ -28,7 +29,7 @@ export default function AccountSettings() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const navigate = useNavigate();
-  const { role, loading: roleLoading } = useUserRole(user);
+  const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
   const { toast } = useToast();
 
@@ -37,6 +38,7 @@ export default function AccountSettings() {
       if (!session) {
         navigate('/auth');
       } else {
+        setSession(session);
         setUser(session.user);
         fetchProfile(session.user.id);
       }
@@ -49,6 +51,7 @@ export default function AccountSettings() {
       if (!session) {
         navigate('/auth');
       } else {
+        setSession(session);
         setUser(session.user);
       }
     });
@@ -177,7 +180,7 @@ export default function AccountSettings() {
       <ModernSidebar
         userEmail={user.email}
         displayName={displayName || undefined}
-        isAdmin={!roleLoading && role === 'admin'}
+        isAdmin={role === 'admin'}
       />
 
       <main className="flex-1 p-4 md:p-6 pt-16 md:pt-6 overflow-auto">

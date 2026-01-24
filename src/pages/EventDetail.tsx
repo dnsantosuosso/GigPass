@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -42,8 +43,9 @@ export default function EventDetail() {
     new Set(),
   );
   const [user, setUser] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { role } = useUserRole(user);
+  const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
 
   useEffect(() => {
@@ -56,12 +58,13 @@ export default function EventDetail() {
 
   const checkAuth = async () => {
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    setUser(user);
+      data: { session },
+    } = await supabase.auth.getSession();
+    setSession(session);
+    setUser(session?.user ?? null);
 
-    if (user && id) {
-      fetchClaimedTickets(user.id);
+    if (session?.user && id) {
+      fetchClaimedTickets(session.user.id);
     }
   };
 

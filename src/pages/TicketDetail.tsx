@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
+import { User, Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,8 +35,9 @@ export default function TicketDetail() {
   const { toast } = useToast();
   const [ticketClaim, setTicketClaim] = useState<TicketClaim | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { role } = useUserRole(user);
+  const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
 
   useEffect(() => {
@@ -48,11 +49,12 @@ export default function TicketDetail() {
 
   const checkAuth = async () => {
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    setUser(user);
+      data: { session },
+    } = await supabase.auth.getSession();
+    setSession(session);
+    setUser(session?.user ?? null);
 
-    if (!user) {
+    if (!session?.user) {
       navigate('/auth');
     }
   };
