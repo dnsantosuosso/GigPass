@@ -29,7 +29,7 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAppSelector((state) => state.auth);
   const [isSignUp, setIsSignUp] = useState(
-    searchParams.get('mode') === 'signup',
+    searchParams.get('mode') === 'signup'
   );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,7 +38,7 @@ export default function Auth() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [isResetMode, setIsResetMode] = useState(
-    searchParams.get('mode') === 'reset',
+    searchParams.get('mode') === 'reset'
   );
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -106,6 +106,7 @@ export default function Auth() {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
+      console.log(window.location.origin);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -208,19 +209,19 @@ export default function Auth() {
               {isResetMode
                 ? 'Set New Password'
                 : isForgotPassword
-                  ? 'Reset Password'
-                  : isSignUp
-                    ? 'Join Gigpass'
-                    : 'Welcome Back'}
+                ? 'Reset Password'
+                : isSignUp
+                ? 'Join Gigpass'
+                : 'Welcome Back'}
             </CardTitle>
             <CardDescription className="text-center text-muted-foreground">
               {isResetMode
                 ? 'Enter your new password below'
                 : isForgotPassword
-                  ? "Enter your email and we'll send you a reset link"
-                  : isSignUp
-                    ? 'Create an account to start claiming unlimited tickets'
-                    : 'Sign in to your account'}
+                ? "Enter your email and we'll send you a reset link"
+                : isSignUp
+                ? 'Create an account to start claiming unlimited tickets'
+                : 'Sign in to your account'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
