@@ -1,0 +1,20 @@
+{
+  "tiers": [
+    {
+      "id": "gigpass-25",
+      "name": "Gigpass",
+      "price": 25,
+      "currency": "USD",
+      "interval": "month",
+      "description": "Access to all events with standard ticket types",
+      "features": [
+        "Unlimited event access",
+        "Standard ticket types",
+        "Email ticket delivery",
+        "Priority support"
+      ],
+      "stripeProductId": null,
+      "stripePriceId": null
+    }
+  ]
+}
