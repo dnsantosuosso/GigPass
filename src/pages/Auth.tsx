@@ -26,20 +26,17 @@ import { useAppSelector } from '@/store';
 import { Navbar } from '@/components/layout/Navbar';
 
 export default function Auth() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode = searchParams.get('mode');
   const { user, loading: authLoading } = useAppSelector((state) => state.auth);
-  const [isSignUp, setIsSignUp] = useState(
-    searchParams.get('mode') === 'signup'
-  );
+  const [isSignUp, setIsSignUp] = useState(mode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
-  const [isResetMode, setIsResetMode] = useState(
-    searchParams.get('mode') === 'reset'
-  );
+  const [isResetMode, setIsResetMode] = useState(mode === 'reset');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
@@ -57,6 +54,11 @@ export default function Auth() {
       navigate('/dashboard');
     }
   }, [user, authLoading, navigate, isResetMode, passwordResetSuccess]);
+
+  useEffect(() => {
+    setIsSignUp(mode === 'signup');
+    setIsResetMode(mode === 'reset');
+  }, [mode]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -531,7 +533,21 @@ export default function Auth() {
 
                 <div className="text-center text-sm">
                   <button
-                    onClick={() => setIsSignUp(!isSignUp)}
+                    type="button"
+                    onClick={() => {
+                      const nextIsSignUp = !isSignUp;
+                      setIsSignUp(nextIsSignUp);
+                      setEmailSent(false);
+                      setResetEmailSent(false);
+                      setIsForgotPassword(false);
+                      setForgotPasswordSocialProvider(null);
+                      setPasswordResetSuccess(false);
+                      if (nextIsSignUp) {
+                        setSearchParams({ mode: 'signup' });
+                      } else {
+                        setSearchParams({});
+                      }
+                    }}
                     className="text-primary hover:underline"
                   >
                     {isSignUp

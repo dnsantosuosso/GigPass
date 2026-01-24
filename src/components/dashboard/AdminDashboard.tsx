@@ -489,7 +489,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 Admin Dashboard
               </h1>
               <p className="text-sm text-muted-foreground">
-                Manage your events and tickets
+                Manage events and tickets
               </p>
             </div>
 
