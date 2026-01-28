@@ -221,12 +221,9 @@ export default function CreateEventWizard({
             .upload(fileName, file);
           if (uploadError) throw uploadError;
 
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from('tickets').getPublicUrl(fileName);
           await supabase.from('tickets').insert({
             event_id: eventDataResult.id,
-            ticket_pdf_url: publicUrl,
+            ticket_pdf_url: fileName,
           });
         }
       }

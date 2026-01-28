@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,17 @@ import {
   Upload,
   FileText,
   ExternalLink,
+  ChevronDown,
+  ArrowLeft,
+  Search,
+  Loader2,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import tiers from '@/config/tiers.json';
 import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -32,6 +42,10 @@ import CreateEventWizard from './CreateEventWizard';
 import ClaimsManagement from './ClaimsManagement';
 import MembersManagement from './MembersManagement';
 import EventImageUpload from './EventImageUpload';
+import UploadTickets from './UploadTickets';
+import EventAdmin from './EventAdmin';
+import { useEventSearch } from '@/hooks/useEventSearch';
+import ActionButton from '@/components/ui/action-button';
 
 type DbEvent = Tables<'events'>;
 
@@ -58,36 +72,58 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ user }: AdminDashboardProps) {
   const { displayName } = useUserProfile(user);
-  const [events, setEvents] = useState<DbEvent[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    events,
+    searchQuery,
+    setSearchQuery,
+    loading,
+    loadingMore,
+    hasMore,
+    handleLoadMore,
+    refetch: refetchEvents,
+  } = useEventSearch({ pageSize: 10 });
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<DbEvent | null>(null);
   const [editingTicketTypes, setEditingTicketTypes] = useState<TicketType[]>(
     []
   );
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [showUploadTickets, setShowUploadTickets] = useState(false);
+  const [selectedEventForAdmin, setSelectedEventForAdmin] = useState<DbEvent | null>(null);
   const [ticketPDFs, setTicketPDFs] = useState<TicketPDF[]>([]);
   const [uploadingPDFs, setUploadingPDFs] = useState<File[]>([]);
+  const [savingEvent, setSavingEvent] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
+  const getTicketPath = (value: string) => {
+    if (value.startsWith('http')) {
+      const marker = '/tickets/';
+      if (value.includes(marker)) {
+        return decodeURIComponent(value.split(marker)[1].split('?')[0]);
+      }
+    }
+    return value;
+  };
 
-  const fetchEvents = async () => {
+  const getSignedTicketUrl = async (pathOrUrl: string) => {
+    const filePath = getTicketPath(pathOrUrl);
+    const { data, error } = await supabase.storage
+      .from('tickets')
+      .createSignedUrl(filePath, 60 * 5);
+    if (error) throw error;
+    return data.signedUrl;
+  };
+
+  const handleOpenPdf = async (pathOrUrl: string) => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('event_date', { ascending: false });
-
-      if (error) throw error;
-      setEvents(data || []);
+      const signedUrl = await getSignedTicketUrl(pathOrUrl);
+      window.open(signedUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
+      console.error('Error opening ticket PDF:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to load events',
+        description: 'Failed to open ticket PDF',
       });
     }
   };
@@ -205,7 +241,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     e.preventDefault();
     if (!editingEvent) return;
 
-    setLoading(true);
+    setSavingEvent(true);
 
     try {
       const validTicketTypes = editingTicketTypes.filter(
@@ -275,13 +311,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
           if (uploadError) throw uploadError;
 
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from('tickets').getPublicUrl(fileName);
-
           await supabase.from('tickets').insert({
             event_id: editingEvent.id,
-            ticket_pdf_url: publicUrl,
+            ticket_pdf_url: fileName,
           });
         }
       }
@@ -294,7 +326,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             : undefined,
       });
       handleCancelEdit();
-      fetchEvents();
+      refetchEvents();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -302,7 +334,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         description: error.message || 'Failed to update event',
       });
     } finally {
-      setLoading(false);
+      setSavingEvent(false);
     }
   };
 
@@ -316,7 +348,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         .eq('id', eventId);
       if (error) throw error;
       toast({ title: 'Event deleted' });
-      fetchEvents();
+      refetchEvents();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -344,10 +376,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
     try {
       // Extract path from URL
-      const urlParts = pdf.ticket_pdf_url.split('/tickets/');
-      if (urlParts.length < 2) throw new Error('Invalid PDF URL');
-
-      const filePath = urlParts[1].split('?')[0];
+      const filePath = getTicketPath(pdf.ticket_pdf_url);
 
       // Delete from storage
       const { error: storageError } = await supabase.storage
@@ -484,63 +513,146 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         <div className="h-full overflow-auto">
           <div className="max-w-5xl mx-auto px-4 py-6 md:px-6 md:py-8">
             {/* Header */}
-            <div className="mb-6">
-              <h1 className="text-2xl md:text-3xl font-bold text-gradient mb-1">
-                Admin Dashboard
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Manage events and tickets
-              </p>
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                {(showCreateWizard || showUploadTickets || selectedEventForAdmin) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowCreateWizard(false);
+                      setShowUploadTickets(false);
+                      setSelectedEventForAdmin(null);
+                    }}
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                )}
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-bold text-gradient mb-1">
+                    {showCreateWizard
+                      ? 'Create Event'
+                      : showUploadTickets
+                        ? 'Upload Tickets'
+                        : selectedEventForAdmin
+                          ? 'Event Tickets'
+                          : 'Admin Dashboard'}
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    {showCreateWizard
+                      ? 'Set up a new event for your members'
+                      : showUploadTickets
+                        ? 'Upload and manage ticket PDFs for an event'
+                        : selectedEventForAdmin
+                          ? `Manage tickets for ${selectedEventForAdmin.title}`
+                          : 'Manage events and tickets'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Admin Actions Dropdown - Hide when in a tool view */}
+              {!showCreateWizard && !showUploadTickets && !selectedEventForAdmin && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <ActionButton
+                      label="New"
+                      icon={<Plus className="h-4 w-4" />}
+                      rightIcon={<ChevronDown className="h-3.5 w-3.5 opacity-70" />}
+                      className="shadow-md"
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      onClick={() => setShowCreateWizard(true)}
+                      className="cursor-pointer gap-2"
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Create Event
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setShowUploadTickets(true)}
+                      className="cursor-pointer gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload Tickets
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
 
             <Tabs
-              defaultValue="events"
+              defaultValue={showCreateWizard || showUploadTickets || selectedEventForAdmin ? 'create' : 'events'}
+              value={showCreateWizard || showUploadTickets || selectedEventForAdmin ? 'create' : undefined}
               className="space-y-4"
             >
-              <TabsList className="bg-muted/50 h-9 grid grid-cols-4 w-full max-w-2xl">
-                <TabsTrigger
-                  value="events"
-                  className="text-sm h-7"
-                >
-                  Events
-                </TabsTrigger>
-                <TabsTrigger
-                  value="claims"
-                  className="text-sm h-7"
-                >
-                  Claims
-                </TabsTrigger>
-                <TabsTrigger
-                  value="members"
-                  className="text-sm h-7"
-                >
-                  Members
-                </TabsTrigger>
-                <TabsTrigger
-                  value="create"
-                  className="text-sm h-7"
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  Create
-                </TabsTrigger>
-              </TabsList>
+              {!showCreateWizard && !showUploadTickets && !selectedEventForAdmin && (
+                <TabsList className="bg-muted/50 h-9 grid grid-cols-3 w-full max-w-md">
+                  <TabsTrigger
+                    value="events"
+                    className="text-sm h-7"
+                  >
+                    Events
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="claims"
+                    className="text-sm h-7"
+                  >
+                    Claims
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="members"
+                    className="text-sm h-7"
+                  >
+                    Members
+                  </TabsTrigger>
+                </TabsList>
+              )}
 
               {/* Events List */}
               <TabsContent
                 value="events"
                 className="space-y-3 animate-fade-in"
               >
-                {events.length === 0 ? (
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search events by name, venue, or genre..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : events.length === 0 ? (
                   <Card className="border-dashed">
                     <CardContent className="py-12 text-center">
                       <Calendar className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-                      <p className="text-muted-foreground text-sm">
-                        No events yet. Create your first event!
+                      <p className="text-muted-foreground text-sm mb-4">
+                        {searchQuery
+                          ? 'No events match your search'
+                          : 'No events yet. Create your first event!'}
                       </p>
+                      {!searchQuery && (
+                        <Button
+                          onClick={() => setShowCreateWizard(true)}
+                          className="gap-2"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create Event
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 ) : (
-                  events.map((event) => (
+                  <>
+                  {events.map((event) => (
                     <Card
                       key={event.id}
                       className="overflow-hidden hover:border-primary/30 transition-colors"
@@ -548,40 +660,47 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       <CardContent className="p-0">
                         {/* Event Row */}
                         <div className="flex items-center gap-3 p-3 md:p-4">
-                          {/* Event Image */}
-                          {event.image_url && (
-                            <div className="hidden sm:block h-14 w-14 rounded-md overflow-hidden bg-muted shrink-0">
-                              <img
-                                src={event.image_url}
-                                alt={event.title}
-                                className="h-full w-full object-cover"
-                              />
-                            </div>
-                          )}
+                          {/* Clickable Event Area */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEventForAdmin(event)}
+                            className="flex items-center gap-3 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                          >
+                            {/* Event Image */}
+                            {event.image_url && (
+                              <div className="hidden sm:block h-14 w-14 rounded-md overflow-hidden bg-muted shrink-0">
+                                <img
+                                  src={event.image_url}
+                                  alt={event.title}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                            )}
 
-                          {/* Event Info */}
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-sm md:text-base truncate">
-                              {event.title}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                {format(
-                                  new Date(event.event_date),
-                                  'MMM d, yyyy'
-                                )}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <MapPin className="h-3 w-3" />
-                                {event.venue}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Users className="h-3 w-3" />
-                                {event.claimed_count}/{event.capacity}
-                              </span>
+                            {/* Event Info */}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-sm md:text-base truncate">
+                                {event.title}
+                              </h3>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {format(
+                                    new Date(event.event_date),
+                                    'MMM d, yyyy'
+                                  )}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" />
+                                  {event.venue}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {event.claimed_count}/{event.capacity}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          </button>
 
                           {/* Actions */}
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -811,12 +930,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                                             type="button"
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() =>
-                                              window.open(
-                                                pdf.ticket_pdf_url,
-                                                '_blank'
-                                              )
-                                            }
+                                            onClick={() => handleOpenPdf(pdf.ticket_pdf_url)}
                                             className="h-8 w-8 p-0"
                                           >
                                             <ExternalLink className="h-4 w-4" />
@@ -906,11 +1020,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                                 <Button
                                   type="submit"
                                   size="sm"
-                                  disabled={loading}
+                                  disabled={savingEvent}
                                   className="h-8"
                                 >
                                   <Save className="h-3.5 w-3.5 mr-1.5" />
-                                  {loading ? 'Saving...' : 'Save'}
+                                  {savingEvent ? 'Saving...' : 'Save'}
                                 </Button>
                                 <Button
                                   type="button"
@@ -927,7 +1041,30 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                         )}
                       </CardContent>
                     </Card>
-                  ))
+                  ))}
+
+                  {/* Load More Button */}
+                  {hasMore && (
+                    <div className="pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                        className="w-full"
+                      >
+                        {loadingMore ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Loading...
+                          </>
+                        ) : (
+                          'Load more events'
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  </>
                 )}
               </TabsContent>
 
@@ -948,19 +1085,37 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               </TabsContent>
 
               {/* Create Event */}
-              <TabsContent
-                value="create"
-                className="animate-fade-in"
-              >
-                <CreateEventWizard
-                  user={user}
-                  onSuccess={() => {
-                    fetchEvents();
-                    setShowCreateWizard(false);
-                  }}
-                  onCancel={() => setShowCreateWizard(false)}
-                />
-              </TabsContent>
+              {showCreateWizard && (
+                <div className="animate-fade-in">
+                  <CreateEventWizard
+                    user={user}
+                    onSuccess={() => {
+                      refetchEvents();
+                      setShowCreateWizard(false);
+                    }}
+                    onCancel={() => setShowCreateWizard(false)}
+                  />
+                </div>
+              )}
+
+              {/* Upload Tickets */}
+              {showUploadTickets && (
+                <div className="animate-fade-in">
+                  <UploadTickets
+                    onSuccess={() => {
+                      setShowUploadTickets(false);
+                    }}
+                    onCancel={() => setShowUploadTickets(false)}
+                  />
+                </div>
+              )}
+
+              {/* Event Admin - View/Manage Tickets */}
+              {selectedEventForAdmin && (
+                <div className="animate-fade-in">
+                  <EventAdmin event={selectedEventForAdmin} />
+                </div>
+              )}
             </Tabs>
           </div>
         </div>

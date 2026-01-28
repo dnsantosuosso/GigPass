@@ -95,6 +95,7 @@ export type Database = {
           event_id: string
           id: string
           ticket_id: string
+          ticket_type_id?: string | null
           user_id: string
         }
         Insert: {
@@ -102,6 +103,7 @@ export type Database = {
           event_id: string
           id?: string
           ticket_id: string
+          ticket_type_id?: string | null
           user_id: string
         }
         Update: {
@@ -109,6 +111,7 @@ export type Database = {
           event_id?: string
           id?: string
           ticket_id?: string
+          ticket_type_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -124,6 +127,13 @@ export type Database = {
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_claims_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_types"
             referencedColumns: ["id"]
           },
         ]
@@ -180,6 +190,7 @@ export type Database = {
           event_id: string
           id: string
           is_claimed: boolean | null
+          ticket_type_id?: string | null
           ticket_pdf_url: string
         }
         Insert: {
@@ -189,6 +200,7 @@ export type Database = {
           event_id: string
           id?: string
           is_claimed?: boolean | null
+          ticket_type_id?: string | null
           ticket_pdf_url: string
         }
         Update: {
@@ -198,6 +210,7 @@ export type Database = {
           event_id?: string
           id?: string
           is_claimed?: boolean | null
+          ticket_type_id?: string | null
           ticket_pdf_url?: string
         }
         Relationships: [
