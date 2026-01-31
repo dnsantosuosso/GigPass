@@ -328,7 +328,9 @@ export default function EventAdmin({ event }: EventAdminProps) {
       setClaimingTicket(null);
     } catch (error: any) {
       console.error('Error creating claim:', error);
-      const isDuplicate = error?.message?.includes('ticket_claims_user_id_event_id_key');
+      const isDuplicate = error?.message?.includes(
+        'ticket_claims_user_id_event_id_key'
+      );
       toast({
         variant: 'destructive',
         title: isDuplicate ? 'Already claimed' : 'Claim failed',
@@ -610,10 +612,10 @@ export default function EventAdmin({ event }: EventAdminProps) {
                     {/* Info */}
                     <div className="p-2 border-t">
                       <p className="text-xs text-muted-foreground break-all">
-                        Ticket ID: {ticket.id}
+                        ID: {ticket.id}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {format(new Date(ticket.created_at), 'MMM d, yyyy')}
+                        Type: {getTicketTypeName(ticket.ticket_type_id)}
                       </p>
                       {ticket.claimed_at && (
                         <p className="text-xs text-green-600">

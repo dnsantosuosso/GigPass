@@ -14,9 +14,19 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, X, ArrowRight, ArrowLeft, Upload } from 'lucide-react';
+import { Plus, X, ArrowRight, ArrowLeft, Upload, Loader2, Check } from 'lucide-react';
 import tiers from '@/config/tiers.json';
 import EventImageUpload from './EventImageUpload';
+import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+interface PagePreview {
+  pageNumber: number;
+  imageUrl: string;
+  selected: boolean;
+}
 
 interface TicketType {
   name: string;
@@ -24,6 +34,9 @@ interface TicketType {
   price: number;
   quantity: number;
   tiers: string[];
+  pdfFile: File | null;
+  pagePreviews: PagePreview[];
+  processingPdf: boolean;
 }
 
 interface CreateEventWizardProps {
@@ -31,6 +44,17 @@ interface CreateEventWizardProps {
   onSuccess: () => void;
   onCancel: () => void;
 }
+
+const DEFAULT_TICKET_TYPE: TicketType = {
+  name: '',
+  description: '',
+  price: 25,
+  quantity: 50,
+  tiers: [],
+  pdfFile: null,
+  pagePreviews: [],
+  processingPdf: false,
+};
 
 export default function CreateEventWizard({
   user,
@@ -40,7 +64,6 @@ export default function CreateEventWizard({
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const [ticketFiles, setTicketFiles] = useState<File[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [eventData, setEventData] = useState({
@@ -56,20 +79,11 @@ export default function CreateEventWizard({
   });
 
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([
-    {
-      name: '',
-      description: '',
-      price: 25,
-      quantity: 50,
-      tiers: [],
-    },
+    { ...DEFAULT_TICKET_TYPE },
   ]);
 
   const addTicketType = () => {
-    setTicketTypes([
-      ...ticketTypes,
-      { name: '', description: '', price: 25, quantity: 50, tiers: [] },
-    ]);
+    setTicketTypes([...ticketTypes, { ...DEFAULT_TICKET_TYPE }]);
   };
 
   const removeTicketType = (index: number) => {
@@ -95,17 +109,103 @@ export default function CreateEventWizard({
     setTicketTypes(updated);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files).filter(
-        (file) => file.type === 'application/pdf'
+  const handleTicketTypePdfChange = async (
+    ticketTypeIndex: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || file.type !== 'application/pdf') {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid file',
+        description: 'Please select a PDF file',
+      });
+      return;
+    }
+
+    setTicketTypes((prev) =>
+      prev.map((tt, i) =>
+        i === ticketTypeIndex ? { ...tt, pdfFile: file, processingPdf: true } : tt
+      )
+    );
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+      const previews: PagePreview[] = [];
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const scale = 0.5;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+          canvas: canvas,
+        }).promise;
+
+        const imageUrl = canvas.toDataURL('image/jpeg', 0.8);
+        previews.push({ pageNumber: i, imageUrl, selected: true });
+      }
+
+      setTicketTypes((prev) =>
+        prev.map((tt, i) =>
+          i === ticketTypeIndex
+            ? { ...tt, pagePreviews: previews, processingPdf: false }
+            : tt
+        )
       );
-      setTicketFiles((prev) => [...prev, ...newFiles]);
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to process PDF file',
+      });
+      setTicketTypes((prev) =>
+        prev.map((tt, i) =>
+          i === ticketTypeIndex
+            ? { ...tt, pdfFile: null, pagePreviews: [], processingPdf: false }
+            : tt
+        )
+      );
     }
   };
 
-  const removeFile = (index: number) => {
-    setTicketFiles((prev) => prev.filter((_, i) => i !== index));
+  const toggleTicketTypePageSelection = (
+    ticketTypeIndex: number,
+    pageNumber: number
+  ) => {
+    setTicketTypes((prev) =>
+      prev.map((tt, i) =>
+        i === ticketTypeIndex
+          ? {
+              ...tt,
+              pagePreviews: tt.pagePreviews.map((p) =>
+                p.pageNumber === pageNumber ? { ...p, selected: !p.selected } : p
+              ),
+            }
+          : tt
+      )
+    );
+  };
+
+  const removeTicketTypePdf = (ticketTypeIndex: number) => {
+    setTicketTypes((prev) =>
+      prev.map((tt, i) =>
+        i === ticketTypeIndex
+          ? { ...tt, pdfFile: null, pagePreviews: [] }
+          : tt
+      )
+    );
   };
 
   const validateStep1 = () => {
@@ -180,7 +280,7 @@ export default function CreateEventWizard({
       if (imageFile) {
         eventInsertData.image_url = '';
       }
-      
+
       const { data: eventDataResult, error: eventError } = await supabase
         .from('events')
         .insert(eventInsertData)
@@ -193,7 +293,7 @@ export default function CreateEventWizard({
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${eventDataResult.id}/${Date.now()}.${fileExt}`;
-        
+
         const { error: imageUploadError } = await supabase.storage
           .from('event-images')
           .upload(fileName, imageFile);
@@ -213,23 +313,9 @@ export default function CreateEventWizard({
         if (updateError) throw updateError;
       }
 
-      if (ticketFiles.length > 0) {
-        for (const file of ticketFiles) {
-          const fileName = `${eventDataResult.id}/${Date.now()}_${file.name}`;
-          const { error: uploadError } = await supabase.storage
-            .from('tickets')
-            .upload(fileName, file);
-          if (uploadError) throw uploadError;
-
-          await supabase.from('tickets').insert({
-            event_id: eventDataResult.id,
-            ticket_pdf_url: fileName,
-          });
-        }
-      }
-
+      // Insert ticket types and upload their PDFs
       for (const ticketType of validTicketTypes) {
-        const { error: typeError } = await supabase
+        const { data: ticketTypeData, error: typeError } = await supabase
           .from('ticket_types')
           .insert({
             event_id: eventDataResult.id,
@@ -238,9 +324,87 @@ export default function CreateEventWizard({
             price: ticketType.price,
             quantity: ticketType.quantity,
             tier_criteria: ticketType.tiers,
-          });
+          })
+          .select('id')
+          .single();
 
         if (typeError) throw typeError;
+
+        // Upload ticket PDFs for this ticket type — one per selected page
+        const selectedPages = ticketType.pagePreviews
+          .filter((p) => p.selected)
+          .map((p) => p.pageNumber);
+
+        if (ticketType.pdfFile && selectedPages.length > 0) {
+          const arrayBuffer = await ticketType.pdfFile.arrayBuffer();
+          const originalPdfBytes = new Uint8Array(arrayBuffer.slice(0));
+
+          for (const pageNum of selectedPages) {
+            let blob: Blob;
+
+            if (ticketType.pagePreviews.length === 1) {
+              blob = ticketType.pdfFile;
+            } else {
+              try {
+                const srcDoc = await PDFDocument.load(originalPdfBytes);
+                const singlePagePdf = await PDFDocument.create();
+                const [copiedPage] = await singlePagePdf.copyPages(srcDoc, [pageNum - 1]);
+                singlePagePdf.addPage(copiedPage);
+                const pdfBytes = await singlePagePdf.save();
+                blob = new Blob([pdfBytes], { type: 'application/pdf' });
+              } catch {
+                // Fallback: render page as high-res image if pdf-lib fails (e.g. encrypted PDFs)
+                const srcPdf = await pdfjsLib.getDocument({ data: originalPdfBytes.slice(0) }).promise;
+                const page = await srcPdf.getPage(pageNum);
+                const scale = 3.0;
+                const viewport = page.getViewport({ scale });
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                if (!context) continue;
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({
+                  canvasContext: context,
+                  viewport: viewport,
+                  canvas: canvas,
+                }).promise;
+
+                const imageUrl = canvas.toDataURL('image/jpeg', 0.95);
+                const imageData = imageUrl.split(',')[1];
+                const imageBytes = Uint8Array.from(atob(imageData), (c) => c.charCodeAt(0));
+
+                const newPdf = await PDFDocument.create();
+                const image = await newPdf.embedJpg(imageBytes);
+                const originalViewport = page.getViewport({ scale: 1.0 });
+                const pdfPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
+                pdfPage.drawImage(image, {
+                  x: 0,
+                  y: 0,
+                  width: originalViewport.width,
+                  height: originalViewport.height,
+                });
+
+                const pdfBytes = await newPdf.save();
+                blob = new Blob([pdfBytes], { type: 'application/pdf' });
+              }
+            }
+
+            const fileName = `event-${eventDataResult.id}/tickets/${Date.now()}_page${pageNum}_ticket.pdf`;
+            const { error: uploadError } = await supabase.storage
+              .from('tickets')
+              .upload(fileName, blob);
+            if (uploadError) throw uploadError;
+
+            await supabase.from('tickets').insert({
+              event_id: eventDataResult.id,
+              ticket_pdf_url: fileName,
+              ticket_type_id: ticketTypeData.id,
+            });
+          }
+        }
       }
 
       toast({
@@ -512,84 +676,107 @@ export default function CreateEventWizard({
                           ))}
                         </div>
                       </div>
+
+                      {/* Per-ticket-type PDF Upload */}
+                      <div>
+                        <Label className="text-xs">Upload Ticket PDF (Optional)</Label>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Each selected page becomes an individual ticket
+                        </p>
+
+                        {!ticketType.pdfFile ? (
+                          <div className="mt-1.5">
+                            <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 hover:border-primary/50 transition-all">
+                              {ticketType.processingPdf ? (
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                  <span className="text-xs text-muted-foreground">
+                                    Processing PDF...
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Upload className="w-4 h-4 text-primary" />
+                                  <span className="text-xs font-medium">
+                                    Click to upload PDF
+                                  </span>
+                                </div>
+                              )}
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept=".pdf,application/pdf"
+                                onChange={(e) => handleTicketTypePdfChange(index, e)}
+                                disabled={ticketType.processingPdf}
+                              />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-medium text-muted-foreground">
+                                {ticketType.pdfFile.name} — {ticketType.pagePreviews.filter((p) => p.selected).length} of{' '}
+                                {ticketType.pagePreviews.length} page(s) selected
+                              </p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeTicketTypePdf(index)}
+                                className="h-6 text-[10px] px-2"
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Remove
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-[200px] overflow-y-auto p-1">
+                              {ticketType.pagePreviews.map((preview) => (
+                                <div
+                                  key={preview.pageNumber}
+                                  className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                                    preview.selected
+                                      ? 'border-primary ring-2 ring-primary/20'
+                                      : 'border-border hover:border-muted-foreground'
+                                  }`}
+                                  onClick={() => toggleTicketTypePageSelection(index, preview.pageNumber)}
+                                >
+                                  <div className="aspect-[3/4] bg-muted">
+                                    <img
+                                      src={preview.imageUrl}
+                                      alt={`Page ${preview.pageNumber}`}
+                                      className="w-full h-full object-contain"
+                                    />
+                                  </div>
+                                  <div className="absolute top-1 left-1">
+                                    <div
+                                      className={`h-3.5 w-3.5 rounded-sm border backdrop-blur-sm flex items-center justify-center ${
+                                        preview.selected
+                                          ? 'bg-primary border-primary text-primary-foreground'
+                                          : 'bg-background/80 border-primary'
+                                      }`}
+                                    >
+                                      {preview.selected && (
+                                        <Check className="h-2.5 w-2.5" />
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="absolute bottom-0 left-0 right-0 bg-background/90 backdrop-blur-sm px-1 py-0.5 text-center">
+                                    <span className="text-[9px] font-medium">
+                                      Page {preview.pageNumber}
+                                    </span>
+                                  </div>
+                                  {!preview.selected && (
+                                    <div className="absolute inset-0 bg-background/60" />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              {/* File Upload */}
-              <div>
-                <Label className="text-xs">Upload Ticket PDFs (Optional)</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Upload PDF tickets that will be sent to members who claim a
-                  spot
-                </p>
-                <div className="mt-1.5">
-                  <label className="flex flex-col items-center justify-center w-full h-40  border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 hover:border-primary/50 transition-all">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Upload className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="text-center">
-                        <span className="text-sm font-medium text-foreground">
-                          Click to upload PDF tickets
-                        </span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          PDF files only, multiple files supported
-                        </p>
-                      </div>
-                    </div>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf"
-                      multiple
-                      onChange={handleFileChange}
-                    />
-                  </label>
-                </div>
-                {ticketFiles.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Selected Files ({ticketFiles.length})
-                    </p>
-                    <div className="space-y-1.5">
-                      {ticketFiles.map((file, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center gap-3 bg-muted/50 px-3 py-2.5 rounded-lg border border-border group hover:border-primary/50 transition-colors"
-                        >
-                          <div className="h-8 w-8 rounded bg-red-100 dark:bg-red-950 flex items-center justify-center shrink-0">
-                            <svg
-                              className="h-5 w-5 text-red-600 dark:text-red-400"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {file.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {(file.size / 1024).toFixed(1)} KB
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeFile(index)}
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="flex gap-2 pt-2">
