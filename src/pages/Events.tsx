@@ -231,9 +231,12 @@ export default function Events() {
       });
     } catch (error: any) {
       console.error('Error claiming ticket:', error);
+      const isDuplicate = error?.message?.includes('ticket_claims_user_id_event_id_key');
       toast({
-        title: 'Claim Failed',
-        description: error.message || 'Failed to claim ticket. Please try again.',
+        title: isDuplicate ? 'Already Claimed' : 'Claim Failed',
+        description: isDuplicate
+          ? 'This user already has a claim for this event.'
+          : error.message || 'Failed to claim ticket. Please try again.',
         variant: 'destructive',
       });
     } finally {

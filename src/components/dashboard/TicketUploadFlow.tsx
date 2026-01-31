@@ -192,80 +192,83 @@ export default function TicketUploadFlow({
 
     setUploading(true);
     try {
-      let blob: Blob;
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const originalPdfBytes = new Uint8Array(arrayBuffer.slice(0));
+      const srcPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      // If all pages selected in order, upload original file directly to preserve content
-      const allPagesSelected = selectedPages.length === pagePreviews.length &&
-        selectedPages.every((page, idx) => page === idx + 1);
+      for (const pageNum of selectedPages) {
+        let blob: Blob;
 
-      if (allPagesSelected) {
-        // Upload original file to preserve all content (barcodes, fonts, etc.)
-        blob = pdfFile;
-      } else {
-        // Render selected pages at high resolution using pdf.js, then create PDF from images
-        const arrayBuffer = await pdfFile.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const newPdf = await PDFDocument.create();
+        if (pagePreviews.length === 1) {
+          // Single-page PDF — upload the original file to preserve content
+          blob = pdfFile;
+        } else {
+          // Extract this single page using pdf-lib to preserve native content (barcodes, fonts, etc.)
+          try {
+            const srcDoc = await PDFDocument.load(originalPdfBytes);
+            const singlePagePdf = await PDFDocument.create();
+            const [copiedPage] = await singlePagePdf.copyPages(srcDoc, [pageNum - 1]);
+            singlePagePdf.addPage(copiedPage);
+            const pdfBytes = await singlePagePdf.save();
+            blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          } catch {
+            // Fallback: render page as high-res image if pdf-lib copy fails
+            const page = await srcPdf.getPage(pageNum);
+            const scale = 3.0;
+            const viewport = page.getViewport({ scale });
 
-        for (const pageNum of selectedPages) {
-          const page = await pdf.getPage(pageNum);
-          // Use scale 3.0 for high quality (~216 DPI, good for barcodes)
-          const scale = 3.0;
-          const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) continue;
 
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (!context) continue;
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
 
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
+            await page.render({
+              canvasContext: context,
+              viewport: viewport,
+              canvas: canvas,
+            }).promise;
 
-          await page.render({
-            canvasContext: context,
-            viewport: viewport,
-            canvas: canvas,
-          }).promise;
+            const imageUrl = canvas.toDataURL('image/jpeg', 0.95);
+            const imageData = imageUrl.split(',')[1];
+            const imageBytes = Uint8Array.from(atob(imageData), (c) => c.charCodeAt(0));
 
-          // Use JPEG with high quality
-          const imageUrl = canvas.toDataURL('image/jpeg', 0.95);
-          const imageData = imageUrl.split(',')[1];
-          const imageBytes = Uint8Array.from(atob(imageData), (c) => c.charCodeAt(0));
+            const newPdf = await PDFDocument.create();
+            const image = await newPdf.embedJpg(imageBytes);
+            const originalViewport = page.getViewport({ scale: 1.0 });
+            const pdfPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
+            pdfPage.drawImage(image, {
+              x: 0,
+              y: 0,
+              width: originalViewport.width,
+              height: originalViewport.height,
+            });
 
-          const image = await newPdf.embedJpg(imageBytes);
-
-          // Create page at original PDF dimensions (not scaled)
-          const originalViewport = page.getViewport({ scale: 1.0 });
-          const pdfPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
-          pdfPage.drawImage(image, {
-            x: 0,
-            y: 0,
-            width: originalViewport.width,
-            height: originalViewport.height,
-          });
+            const pdfBytes = await newPdf.save();
+            blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          }
         }
 
-        const pdfBytes = await newPdf.save();
-        blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const fileName = `event-${eventId}/tickets/${Date.now()}_page${pageNum}_ticket.pdf`;
+        const { error: uploadError } = await supabase.storage
+          .from('tickets')
+          .upload(fileName, blob);
+
+        if (uploadError) throw uploadError;
+
+        const { error: dbError } = await supabase.from('tickets').insert({
+          event_id: eventId,
+          ticket_pdf_url: fileName,
+          ticket_type_id: selectedTicketTypeId,
+        });
+
+        if (dbError) throw dbError;
       }
-
-      const fileName = `event-${eventId}/tickets/${Date.now()}_ticket.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from('tickets')
-        .upload(fileName, blob);
-
-      if (uploadError) throw uploadError;
-
-      const { error: dbError } = await supabase.from('tickets').insert({
-        event_id: eventId,
-        ticket_pdf_url: fileName,
-        ticket_type_id: selectedTicketTypeId,
-      });
-
-      if (dbError) throw dbError;
 
       toast({
         title: 'Success',
-        description: `Ticket uploaded with ${selectedPages.length} page(s)`,
+        description: `${selectedPages.length} ticket(s) uploaded successfully`,
       });
 
       setShowPreviewDialog(false);
@@ -277,7 +280,7 @@ export default function TicketUploadFlow({
       toast({
         variant: 'destructive',
         title: 'Upload failed',
-        description: 'Failed to upload ticket PDF',
+        description: 'Failed to upload ticket PDFs',
       });
     } finally {
       setUploading(false);
@@ -460,7 +463,7 @@ export default function TicketUploadFlow({
               ) : (
                 <>
                   <FileText className="h-4 w-4" />
-                  Upload {selectedCount} Page{selectedCount !== 1 ? 's' : ''}
+                  Upload {selectedCount} Ticket{selectedCount !== 1 ? 's' : ''}
                 </>
               )}
             </Button>

@@ -268,10 +268,13 @@ export default function EventDetail() {
       fetchEvent();
     } catch (error: any) {
       console.error('[EventDetail] Error claiming ticket:', error);
+      const isDuplicate = error?.message?.includes('ticket_claims_user_id_event_id_key');
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to claim ticket',
+        title: isDuplicate ? 'Already claimed' : 'Error',
+        description: isDuplicate
+          ? 'This user already has a claim for this event.'
+          : error.message || 'Failed to claim ticket',
       });
     }
   };
