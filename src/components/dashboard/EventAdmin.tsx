@@ -30,7 +30,7 @@ import { format } from 'date-fns';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Tables } from '@/integrations/supabase/types';
 import TicketUploadFlow from './TicketUploadFlow';
-import AdminClaim from './AdminClaim';
+import ClaimDetails from './ClaimDetails';
 import ActionButton from '@/components/ui/action-button';
 
 // Set up PDF.js worker
@@ -709,7 +709,7 @@ export default function EventAdmin({ event }: EventAdminProps) {
             </DialogDescription>
           </DialogHeader>
           {viewClaimTicketId && (
-            <AdminClaim
+            <ClaimDetails
               ticketId={viewClaimTicketId}
               onUnclaimed={handleUnclaimed}
             />

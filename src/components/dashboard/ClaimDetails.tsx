@@ -8,7 +8,7 @@ import { ExternalLink, Ticket, User, Calendar, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
-interface AdminClaimProps {
+interface ClaimDetailsProps {
   ticketId: string;
   onUnclaimed?: (ticketId: string) => void;
 }
@@ -53,7 +53,10 @@ const getTicketPath = (value: string) => {
   return value;
 };
 
-export default function AdminClaim({ ticketId, onUnclaimed }: AdminClaimProps) {
+export default function ClaimDetails({
+  ticketId,
+  onUnclaimed,
+}: ClaimDetailsProps) {
   const [claim, setClaim] = useState<ClaimData | null>(null);
   const [loading, setLoading] = useState(true);
   const [openUrl, setOpenUrl] = useState<string | null>(null);

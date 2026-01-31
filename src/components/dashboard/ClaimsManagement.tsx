@@ -5,6 +5,22 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -23,13 +39,16 @@ import {
   X,
 } from 'lucide-react';
 import { format, isAfter, isBefore } from 'date-fns';
+import ClaimDetails from './ClaimDetails';
 
 interface TicketClaim {
   id: string;
+  ticket_id: string;
   claimed_at: string;
   user: {
     email: string;
-    full_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
   };
   event: {
     id: string;
@@ -49,10 +68,18 @@ export default function ClaimsManagement() {
     'all'
   );
   const [sortBy, setSortBy] = useState<'date' | 'event' | 'user'>('date');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const pageSize = 10;
 
   useEffect(() => {
     fetchClaims();
-  }, []);
+  }, [currentPage, statusFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, sortBy]);
 
   useEffect(() => {
     filterAndSortClaims();
@@ -61,43 +88,71 @@ export default function ClaimsManagement() {
   const fetchClaims = async () => {
     try {
       setLoading(true);
+      const offset = (currentPage - 1) * pageSize;
 
-      // First get all claims with user IDs
-      const { data: claimsData, error: claimsError } = await supabase
+      let query = supabase
         .from('ticket_claims')
-        .select('id, claimed_at, user_id, event_id')
-        .order('claimed_at', { ascending: false });
+        .select(
+          `
+          id,
+          ticket_id,
+          claimed_at,
+          user_id,
+          event:events!inner (
+            id,
+            title,
+            venue,
+            event_date,
+            image_url
+          )
+        `,
+          { count: 'exact' }
+        )
+        .order('claimed_at', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      const now = new Date().toISOString();
+      if (statusFilter === 'upcoming') {
+        query = query.gte('event.event_date', now);
+      } else if (statusFilter === 'past') {
+        query = query.lt('event.event_date', now);
+      }
+
+      const {
+        data: claimsData,
+        error: claimsError,
+        count,
+      } = await query;
 
       if (claimsError) throw claimsError;
+      setTotalCount(count || 0);
 
       // Get user profiles
       const userIds = [...new Set(claimsData?.map((c) => c.user_id) || [])];
-      const { data: usersData } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .in('id', userIds);
-
-      // Get events
-      const eventIds = [...new Set(claimsData?.map((c) => c.event_id) || [])];
-      const { data: eventsData } = await supabase
-        .from('events')
-        .select('id, title, venue, event_date, image_url')
-        .in('id', eventIds);
+      const { data: usersData } =
+        userIds.length > 0
+          ? await supabase
+              .from('profiles')
+              .select('id, email, first_name, last_name')
+              .in('id', userIds)
+          : { data: [] };
 
       // Map the data together
       const processedClaims = (claimsData || [])
         .map((claim) => {
           const user = usersData?.find((u) => u.id === claim.user_id);
-          const event = eventsData?.find((e) => e.id === claim.event_id);
+          const event = claim.event;
 
           if (!user || !event) return null;
 
           return {
             id: claim.id,
+            ticket_id: claim.ticket_id,
             claimed_at: claim.claimed_at,
             user: {
               email: user.email,
-              full_name: user.full_name,
+              first_name: user.first_name,
+              last_name: user.last_name,
             },
             event: {
               id: event.id,
@@ -128,7 +183,10 @@ export default function ClaimsManagement() {
         (claim) =>
           claim.event.title.toLowerCase().includes(query) ||
           claim.user.email.toLowerCase().includes(query) ||
-          claim.user.full_name?.toLowerCase().includes(query) ||
+          `${claim.user.first_name || ''} ${claim.user.last_name || ''}`
+            .trim()
+            .toLowerCase()
+            .includes(query) ||
           claim.event.venue.toLowerCase().includes(query)
       );
     }
@@ -173,7 +231,7 @@ export default function ClaimsManagement() {
     const uniqueEvents = new Set(claims.map((c) => c.event.id)).size;
 
     return {
-      total: claims.length,
+      total: totalCount,
       upcoming: upcoming.length,
       past: past.length,
       uniqueUsers,
@@ -182,6 +240,26 @@ export default function ClaimsManagement() {
   };
 
   const stats = getStatistics();
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const getPageNumbers = (current: number, total: number) => {
+    const pages: (number | 'ellipsis')[] = [];
+    if (total <= 5) {
+      for (let i = 1; i <= total; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (current > 3) pages.push('ellipsis');
+
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+
+      for (let i = start; i <= end; i++) pages.push(i);
+
+      if (current < total - 2) pages.push('ellipsis');
+      pages.push(total);
+    }
+    return pages;
+  };
 
   const exportToCSV = () => {
     const headers = [
@@ -198,7 +276,8 @@ export default function ClaimsManagement() {
       claim.event.venue,
       format(new Date(claim.event.event_date), 'yyyy-MM-dd HH:mm:ss'),
       claim.user.email,
-      claim.user.full_name || 'N/A',
+      [claim.user.first_name, claim.user.last_name].filter(Boolean).join(' ') ||
+        claim.user.email,
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
@@ -386,13 +465,17 @@ export default function ClaimsManagement() {
       ) : (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground px-1">
-            Showing {filteredClaims.length} of {claims.length} claims
+            Showing {filteredClaims.length} of {totalCount} claims
           </p>
           {filteredClaims.map((claim) => {
             const isPast = isBefore(
               new Date(claim.event.event_date),
               new Date()
             );
+            const userName =
+              [claim.user.first_name, claim.user.last_name]
+                .filter(Boolean)
+                .join(' ') || claim.user.email;
             return (
               <Card
                 key={claim.id}
@@ -417,18 +500,30 @@ export default function ClaimsManagement() {
                         <h4 className="font-semibold text-sm truncate">
                           {claim.event.title}
                         </h4>
-                        <Badge
-                          variant={isPast ? 'secondary' : 'default'}
-                          className="shrink-0 text-xs"
-                        >
-                          {isPast ? 'Past' : 'Upcoming'}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge
+                            variant={isPast ? 'secondary' : 'default'}
+                            className="text-xs"
+                          >
+                            {isPast ? 'Past' : 'Upcoming'}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() =>
+                              setSelectedTicketId(claim.ticket_id)
+                            }
+                          >
+                            View details
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <User className="h-3 w-3" />
-                          {claim.user.full_name || claim.user.email}
+                          {userName}
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
@@ -456,8 +551,72 @@ export default function ClaimsManagement() {
               </Card>
             );
           })}
+          {totalPages > 1 && (
+            <Pagination className="mt-4">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() =>
+                      setCurrentPage((page) => Math.max(1, page - 1))
+                    }
+                    disabled={currentPage === 1}
+                  />
+                </PaginationItem>
+
+                {getPageNumbers(currentPage, totalPages).map((page, index) =>
+                  page === 'ellipsis' ? (
+                    <PaginationItem key={`ellipsis-${index}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
+
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() =>
+                      setCurrentPage((page) => Math.min(totalPages, page + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
         </div>
       )}
+      <Dialog
+        open={!!selectedTicketId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTicketId(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Claim Details</DialogTitle>
+            <DialogDescription>
+              Full claim metadata for this ticket.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTicketId && (
+            <ClaimDetails
+              ticketId={selectedTicketId}
+              onUnclaimed={() => {
+                setSelectedTicketId(null);
+                fetchClaims();
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
