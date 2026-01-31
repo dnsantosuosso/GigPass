@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -203,17 +202,46 @@ export default function TicketUploadFlow({
         // Upload original file to preserve all content (barcodes, fonts, etc.)
         blob = pdfFile;
       } else {
-        // Extract specific pages using pdf-lib
+        // Render selected pages at high resolution using pdf.js, then create PDF from images
         const arrayBuffer = await pdfFile.arrayBuffer();
-        const originalPdf = await PDFDocument.load(arrayBuffer, {
-          ignoreEncryption: true,
-        });
-
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const newPdf = await PDFDocument.create();
 
         for (const pageNum of selectedPages) {
-          const [copiedPage] = await newPdf.copyPages(originalPdf, [pageNum - 1]);
-          newPdf.addPage(copiedPage);
+          const page = await pdf.getPage(pageNum);
+          // Use scale 3.0 for high quality (~216 DPI, good for barcodes)
+          const scale = 3.0;
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context) continue;
+
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas,
+          }).promise;
+
+          // Use JPEG with high quality
+          const imageUrl = canvas.toDataURL('image/jpeg', 0.95);
+          const imageData = imageUrl.split(',')[1];
+          const imageBytes = Uint8Array.from(atob(imageData), (c) => c.charCodeAt(0));
+
+          const image = await newPdf.embedJpg(imageBytes);
+
+          // Create page at original PDF dimensions (not scaled)
+          const originalViewport = page.getViewport({ scale: 1.0 });
+          const pdfPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
+          pdfPage.drawImage(image, {
+            x: 0,
+            y: 0,
+            width: originalViewport.width,
+            height: originalViewport.height,
+          });
         }
 
         const pdfBytes = await newPdf.save();
@@ -371,7 +399,7 @@ export default function TicketUploadFlow({
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto max-h-[50vh]">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4">
               {pagePreviews.map((preview) => (
                 <div
@@ -413,7 +441,7 @@ export default function TicketUploadFlow({
                 </div>
               ))}
             </div>
-          </ScrollArea>
+          </div>
 
           <DialogFooter className="border-t pt-4">
             <Button variant="outline" onClick={handleCancelPreview}>

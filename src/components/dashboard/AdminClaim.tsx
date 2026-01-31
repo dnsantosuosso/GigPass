@@ -19,7 +19,8 @@ interface ClaimData {
   user: {
     id: string;
     email: string;
-    full_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
   } | null;
   event: {
     id: string;
@@ -84,7 +85,7 @@ export default function AdminClaim({ ticketId, onUnclaimed }: AdminClaimProps) {
           await Promise.all([
             supabase
               .from('profiles')
-              .select('id, email, full_name')
+              .select('id, email, first_name, last_name')
               .eq('id', claimData.user_id)
               .maybeSingle(),
             supabase
@@ -113,7 +114,8 @@ export default function AdminClaim({ ticketId, onUnclaimed }: AdminClaimProps) {
             ? {
                 id: userData.id,
                 email: userData.email,
-                full_name: userData.full_name,
+                first_name: userData.first_name,
+                last_name: userData.last_name,
               }
             : null,
           event: eventData
@@ -253,14 +255,18 @@ export default function AdminClaim({ ticketId, onUnclaimed }: AdminClaimProps) {
 
         <Separator />
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-sm font-medium">
               <User className="h-4 w-4" />
               User
             </div>
             <p className="text-sm">
-              {claim.user?.full_name || 'Unknown user'}
+              {claim.user
+                ? claim.user.first_name && claim.user.last_name
+                  ? `${claim.user.first_name} ${claim.user.last_name}`
+                  : claim.user.email
+                : 'Unknown user'}
             </p>
             <p className="text-xs text-muted-foreground">
               {claim.user?.email || 'No email'}
