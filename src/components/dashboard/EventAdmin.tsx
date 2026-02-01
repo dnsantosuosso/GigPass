@@ -267,6 +267,13 @@ export default function EventAdmin({ event }: EventAdminProps) {
         throw new Error('Ticket type is missing for this ticket.');
       }
 
+      const { data: adminData, error: adminError } =
+        await supabase.auth.getUser();
+      if (adminError) throw adminError;
+      if (!adminData.user?.id) {
+        throw new Error('No authenticated admin user found.');
+      }
+
       const { data: userData, error: userError } = await supabase
         .from('profiles')
         .select('id, email')
@@ -285,6 +292,8 @@ export default function EventAdmin({ event }: EventAdminProps) {
           event_id: event.id,
           ticket_id: claimingTicket.id,
           ticket_type_id: claimingTicket.ticket_type_id,
+          created_by_id: adminData.user.id,
+          created_by_type: 'admin', // since this is done from admin dashboard
         });
 
       if (claimError) throw claimError;

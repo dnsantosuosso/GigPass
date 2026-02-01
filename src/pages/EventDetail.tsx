@@ -228,6 +228,8 @@ export default function EventDetail() {
           user_id: user.id,
           event_id: id!,
           ticket_id: availableTicket.id,
+          created_by_id: user.id,
+          created_by_type: 'member',
         });
 
       if (claimError) {

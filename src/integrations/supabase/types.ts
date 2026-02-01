@@ -92,6 +92,8 @@ export type Database = {
       ticket_claims: {
         Row: {
           claimed_at: string | null
+          created_by_id: string | null
+          created_by_type: Database["public"]["Enums"]["app_role"] | null
           event_id: string
           id: string
           ticket_id: string
@@ -100,6 +102,8 @@ export type Database = {
         }
         Insert: {
           claimed_at?: string | null
+          created_by_id?: string | null
+          created_by_type?: Database["public"]["Enums"]["app_role"] | null
           event_id: string
           id?: string
           ticket_id: string
@@ -108,6 +112,8 @@ export type Database = {
         }
         Update: {
           claimed_at?: string | null
+          created_by_id?: string | null
+          created_by_type?: Database["public"]["Enums"]["app_role"] | null
           event_id?: string
           id?: string
           ticket_id?: string

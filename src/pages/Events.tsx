@@ -215,6 +215,8 @@ export default function Events() {
           ticket_id: availableTicket.id,
           event_id: eventId,
           user_id: user.id,
+          created_by_id: user.id,
+          created_by_type: 'member',
         });
 
       if (claimError) throw claimError;
