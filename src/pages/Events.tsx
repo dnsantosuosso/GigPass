@@ -7,7 +7,15 @@ import {
   CardContent,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MapPin, Users, Ticket, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Calendar, MapPin, Users, Ticket, Loader2, Search, Filter, MapPinIcon } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/layout/Navbar';
@@ -16,6 +24,7 @@ import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useToast } from '@/hooks/use-toast';
+import cities from '@/config/cities.json';
 import {
   Pagination,
   PaginationContent,
@@ -44,15 +53,30 @@ const ITEMS_PER_PAGE = 9;
 
 export default function Events() {
   const [events, setEvents] = useState<Event[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCity, setSelectedCity] = useState('toronto');
+  const [selectedEventType, setSelectedEventType] = useState('all');
+  const [availableCities, setAvailableCities] = useState<Array<{ value: string; label: string }>>([]);
+  const [availableEventTypes, setAvailableEventTypes] = useState<Array<{ value: string; label: string }>>([]);
   const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+
+  // City mapping from config
+  const cityLabels: Record<string, string> = cities.cities.reduce((acc, city) => {
+    acc[city.id] = city.displayName;
+    return acc;
+  }, {} as Record<string, string>);
+
 
   useEffect(() => {
     // Check authentication
@@ -72,41 +96,143 @@ export default function Events() {
   }, []);
 
   useEffect(() => {
+    fetchAvailableCities();
+  }, []);
+
+  useEffect(() => {
+    // Refetch event types whenever the city changes
+    // Also reset the event type filter to 'all' when switching cities
+    setSelectedEventType('all');
+    fetchAvailableEventTypes();
+  }, [selectedCity]);
+
+  useEffect(() => {
+    // Reset to page 1 when filters change
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    } else {
+      fetchEvents();
+    }
+  }, [selectedCity, selectedEventType, searchQuery]);
+
+  useEffect(() => {
+    // Fetch when page changes
     fetchEvents();
   }, [currentPage]);
+
+  const fetchAvailableCities = async () => {
+    try {
+      // Get distinct cities from events that have upcoming events
+      const { data, error } = await supabase
+        .from('events')
+        .select('city')
+        .gte('event_date', new Date().toISOString());
+
+      if (error) throw error;
+
+      // Get unique cities
+      const uniqueCities = Array.from(new Set(data?.map(event => event.city).filter(Boolean))) as string[];
+      
+      // Map to city objects with labels
+      const cities = uniqueCities.map(city => ({
+        value: city,
+        label: cityLabels[city] || city.charAt(0).toUpperCase() + city.slice(1),
+      }));
+
+      setAvailableCities(cities);
+
+      // If selected city is not in available cities, select the first one
+      if (cities.length > 0 && !cities.find(c => c.value === selectedCity)) {
+        setSelectedCity(cities[0].value);
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+    }
+  };
+
+  const fetchAvailableEventTypes = async () => {
+    try {
+      // Get distinct event types from upcoming events in the SELECTED CITY
+      const { data, error } = await supabase
+        .from('events')
+        .select('event_type')
+        .eq('city', selectedCity)
+        .gte('event_date', new Date().toISOString())
+        .not('event_type', 'is', null);
+
+      if (error) throw error;
+
+      // Get unique event types and filter out empty strings
+      const uniqueTypes = Array.from(
+        new Set(data?.map(event => event.event_type).filter(type => type && type.trim()))
+      ) as string[];
+      
+      // Map to event type objects with labels
+      const types = uniqueTypes.map(type => ({
+        value: type,
+        label: type,
+      }));
+
+      // Add "All Events" option at the beginning
+      setAvailableEventTypes([{ value: 'all', label: 'All Events' }, ...types]);
+    } catch (error) {
+      console.error('Error fetching event types:', error);
+      // Fallback to just "All Events"
+      setAvailableEventTypes([{ value: 'all', label: 'All Events' }]);
+    }
+  };
 
   const fetchEvents = async () => {
     try {
       setLoading(true);
 
-      // Get total count first
-      const { count, error: countError } = await supabase
+      // Build query with filters applied server-side
+      let query = supabase
         .from('events')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
+        .eq('city', selectedCity)
         .gte('event_date', new Date().toISOString());
 
+      // Apply event type filter server-side
+      if (selectedEventType !== 'all') {
+        query = query.eq('event_type', selectedEventType);
+      }
+
+      // Apply search filter server-side
+      if (searchQuery.trim()) {
+        const searchTerm = searchQuery.trim();
+        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%,venue.ilike.%${searchTerm}%,genre.ilike.%${searchTerm}%`);
+      }
+
+      // Get total count with filters applied
+      const { count, error: countError } = await query;
       if (countError) throw countError;
       setTotalCount(count || 0);
 
-      // Fetch paginated data
+      // Fetch paginated data with filters
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .gte('event_date', new Date().toISOString())
+      const { data, error } = await query
         .order('event_date', { ascending: true })
         .range(from, to);
 
       if (error) throw error;
 
       setEvents(data || []);
+      setFilteredEvents(data || []);
     } catch (error) {
       console.error('Error fetching events:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatVenueAddress = (venue: string, address: string) => {
+    // Extract street number and name from address
+    // Example: "123 Main Street, Toronto, ON" -> "123 Main Street"
+    const streetPart = address.split(',')[0].trim();
+    return `${venue}, ${streetPart}`;
   };
 
   const handlePageChange = (page: number) => {
@@ -133,119 +259,6 @@ export default function Events() {
     return pages;
   };
 
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const [claimingEventId, setClaimingEventId] = useState<string | null>(null);
-
-  const handleClaimTicket = async (e: React.MouseEvent, eventId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
-
-    setClaimingEventId(eventId);
-
-    try {
-      // Check if user already has a ticket for this event
-      const { data: existingClaim } = await supabase
-        .from('ticket_claims')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (existingClaim) {
-        toast({
-          title: 'Already Claimed',
-          description: 'You already have a ticket for this event.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Find an available ticket
-      const { data: availableTicket, error: ticketError } = await supabase
-        .from('tickets')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('is_claimed', false)
-        .limit(1)
-        .maybeSingle();
-
-      if (ticketError) throw ticketError;
-
-      if (!availableTicket) {
-        // Check if there are any tickets at all for this event
-        const { count } = await supabase
-          .from('tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', eventId);
-
-        const message = count === 0 
-          ? 'Tickets have not been uploaded for this event yet.'
-          : 'Sorry, all tickets have been claimed.';
-          
-        toast({
-          title: 'No Tickets Available',
-          description: message,
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Mark ticket as claimed
-      const { error: updateError } = await supabase
-        .from('tickets')
-        .update({
-          is_claimed: true,
-          claimed_by: user.id,
-          claimed_at: new Date().toISOString(),
-        })
-        .eq('id', availableTicket.id);
-
-      if (updateError) throw updateError;
-
-      // Create ticket claim record
-      const { error: claimError } = await supabase
-        .from('ticket_claims')
-        .insert({
-          ticket_id: availableTicket.id,
-          event_id: eventId,
-          user_id: user.id,
-          created_by_id: user.id,
-          created_by_type: 'member',
-        });
-
-      if (claimError) throw claimError;
-
-      // Increment claimed_count using RPC function
-      await supabase.rpc('increment_event_claimed_count', { event_id: eventId });
-
-      // Refresh events to show updated count
-      fetchEvents();
-
-      toast({
-        title: 'Ticket Claimed!',
-        description: 'Your ticket has been successfully claimed.',
-      });
-    } catch (error: any) {
-      console.error('Error claiming ticket:', error);
-      const isDuplicate = error?.message?.includes('ticket_claims_user_id_event_id_key');
-      toast({
-        title: isDuplicate ? 'Already Claimed' : 'Claim Failed',
-        description: isDuplicate
-          ? 'This user already has a claim for this event.'
-          : error.message || 'Failed to claim ticket. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setClaimingEventId(null);
-    }
-  };
-
   const EventImage = ({ imageUrl, title }: { imageUrl: string | null; title: string }) => {
     const [imageError, setImageError] = useState(false);
 
@@ -270,15 +283,27 @@ export default function Events() {
   const EventCard = ({ event }: { event: Event }) => {
     const spotsLeft = event.capacity - event.claimed_count;
     const spotsPercentage = (event.claimed_count / event.capacity) * 100;
-    const isAlmostFull = spotsPercentage >= 80;
+    const isFewTicketsLeft = spotsPercentage >= 75;
     const isFull = spotsLeft === 0;
-    const isClaiming = claimingEventId === event.id;
+
+    // Determine status label
+    const getStatusLabel = () => {
+      if (isFull) return 'No Tickets Left';
+      if (isFewTicketsLeft) return 'Few Tickets Left';
+      return 'Tickets Available';
+    };
+
+    const getStatusVariant = () => {
+      if (isFull) return 'destructive';
+      if (isFewTicketsLeft) return 'default';
+      return 'outline';
+    };
 
     return (
-      <Card className="overflow-hidden h-full transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 group flex flex-col">
-        {/* Image with Overlay */}
-        <Link to={`/events/${event.id}`} className="block">
-        <div className="relative h-44 sm:h-48 overflow-hidden bg-muted">
+      <Link to={`/events/${event.id}`} className="block h-full">
+        <Card className="overflow-hidden h-full transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 group flex flex-col cursor-pointer">
+          {/* Image with Overlay */}
+          <div className="relative h-44 sm:h-48 overflow-hidden bg-muted">
             <EventImage imageUrl={event.image_url} title={event.title} />
             <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
 
@@ -290,14 +315,12 @@ export default function Events() {
             )}
 
             {/* Availability Badge */}
-            {(isAlmostFull || isFull) && (
-              <Badge
-                variant={isFull ? 'destructive' : 'default'}
-                className="absolute top-3 left-3 text-xs backdrop-blur-sm"
-              >
-                {isFull ? 'Sold Out' : `${spotsLeft} left`}
-              </Badge>
-            )}
+            <Badge
+              variant={getStatusVariant()}
+              className="absolute top-3 left-3 text-xs backdrop-blur-sm"
+            >
+              {getStatusLabel()}
+            </Badge>
 
             {/* Title Overlay */}
             <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -306,9 +329,8 @@ export default function Events() {
               </h3>
             </div>
           </div>
-        </Link>
 
-        <CardContent className="p-4 flex-1 flex flex-col">
+          <CardContent className="p-4 flex-1 flex flex-col">
           {/* Event Type - fixed height area */}
           <div className="h-5 mb-2">
             {event.event_type && (
@@ -321,7 +343,7 @@ export default function Events() {
           {/* Description - fixed height area for consistent alignment */}
           <div className="h-10 mb-3">
             <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-              {event.description || '\u00A0'}
+              {event.description || ''}
             </p>
           </div>
 
@@ -337,59 +359,92 @@ export default function Events() {
             </div>
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <span className="text-foreground truncate">{event.venue}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary shrink-0" />
-              <span className="text-foreground">
-                {event.claimed_count} / {event.capacity} claimed
+              <span className="text-foreground truncate text-xs">
+                {formatVenueAddress(event.venue, event.address)}
               </span>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-2 mt-auto pt-4">
-            <Button
-              variant="outline"
-              className="flex-1"
-              size="sm"
-              asChild
-            >
-              <Link to={`/events/${event.id}`}>View Details</Link>
-            </Button>
+          {/* Action Button - View Details Only */}
+          <div className="mt-auto pt-4">
             <Button
               variant="default"
-              className="flex-1"
+              className="w-full"
               size="sm"
-              disabled={isFull || isClaiming}
-              onClick={(e) => handleClaimTicket(e, event.id)}
             >
-              {isClaiming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isFull ? (
-                'Sold Out'
-              ) : (
-                'Claim Ticket'
-              )}
+              View Details
             </Button>
           </div>
         </CardContent>
-      </Card>
+        </Card>
+      </Link>
     );
   };
 
   const eventsList = (
-    <div className="container mx-auto px-4 md:px-6 py-6 md:py-8">
-      {/* Header */}
+    <div className="container mx-auto px-4 md:px-6 pt-8 pb-6 md:py-8">
+      {/* Header with City Context */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <h1 className="text-2xl md:text-3xl font-bold text-gradient">
-            Upcoming Events
-          </h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MapPinIcon className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl md:text-3xl font-bold text-gradient">
+                Events in {cityLabels[selectedCity] || 'Your City'}
+              </h1>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Discover exclusive live music experiences and claim your tickets
+            </p>
+          </div>
+          
+          {/* City Switcher */}
+          {availableCities.length > 1 && (
+            <Select value={selectedCity} onValueChange={setSelectedCity}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Select city" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableCities.map((city) => (
+                  <SelectItem key={city.value} value={city.value}>
+                    {city.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
-        <p className="text-sm text-muted-foreground">
-          Discover exclusive live music experiences and claim your tickets
-        </p>
+
+        {/* Search and Filters */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search events, venues, genres..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* Event Type Filter */}
+          {availableEventTypes.length > 1 && (
+            <Select value={selectedEventType} onValueChange={setSelectedEventType}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Event type" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableEventTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -416,23 +471,38 @@ export default function Events() {
             </div>
           ))}
         </div>
-      ) : events.length === 0 ? (
+      ) : filteredEvents.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center">
             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <Calendar className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="font-semibold text-lg mb-2">No Events Available</h3>
+            <h3 className="font-semibold text-lg mb-2">
+              {searchQuery || selectedEventType !== 'all' ? 'No Events Found' : 'No Events Available'}
+            </h3>
             <p className="text-muted-foreground max-w-sm mx-auto">
-              There are no upcoming events at the moment. Check back soon for
-              new exciting events!
+              {searchQuery || selectedEventType !== 'all'
+                ? 'Try adjusting your search or filters to find more events.'
+                : 'There are no upcoming events at the moment. Check back soon for new exciting events!'}
             </p>
+            {(searchQuery || selectedEventType !== 'all') && (
+              <Button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedEventType('all');
+                }}
+                variant="outline"
+                className="mt-4"
+              >
+                Clear Filters
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
-            {events.map((event) => (
+            {filteredEvents.map((event) => (
               <EventCard
                 key={event.id}
                 event={event}

@@ -1,0 +1,22 @@
+{
+  "cities": [
+    {
+      "id": "toronto",
+      "name": "Toronto",
+      "timezone": "America/Toronto",
+      "displayName": "Toronto"
+    },
+    {
+      "id": "vancouver",
+      "name": "Vancouver",
+      "timezone": "America/Vancouver",
+      "displayName": "Vancouver"
+    },
+    {
+      "id": "montreal",
+      "name": "Montreal",
+      "timezone": "America/Toronto",
+      "displayName": "Montreal"
+    }
+  ]
+}

@@ -15,7 +15,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, X, ArrowRight, ArrowLeft, Upload, Loader2, Check } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import tiers from '@/config/tiers.json';
+import cities from '@/config/cities.json';
 import EventImageUpload from './EventImageUpload';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -74,9 +82,20 @@ export default function CreateEventWizard({
     event_date: '',
     event_type: '',
     genre: '',
-    capacity: 100,
     image_url: '',
+    city: 'toronto',
   });
+
+  const eventTypeOptions = [
+    'Live Music',
+    'Comedy',
+    'Parties',
+    'Theatre',
+    'Sports',
+    'Festival',
+    'Conference',
+    'Workshop',
+  ];
 
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([
     { ...DEFAULT_TICKET_TYPE },
@@ -491,29 +510,42 @@ export default function CreateEventWizard({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Type</Label>
-                  <Input
-                    value={eventData.event_type}
-                    onChange={(e) =>
-                      setEventData({ ...eventData, event_type: e.target.value })
-                    }
-                    placeholder="Concert, Festival..."
-                    className="h-8 text-sm"
-                  />
+                  <Label className="text-xs">City *</Label>
+                  <Select 
+                    value={eventData.city} 
+                    onValueChange={(value) => setEventData({ ...eventData, city: value })}
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select city" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cities.cities.map((city) => (
+                        <SelectItem key={city.id} value={city.id}>
+                          {city.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Capacity</Label>
-                  <Input
-                    type="number"
-                    value={eventData.capacity}
-                    onChange={(e) =>
-                      setEventData({
-                        ...eventData,
-                        capacity: parseInt(e.target.value),
-                      })
+                  <Label className="text-xs">Type</Label>
+                  <Select
+                    value={eventData.event_type}
+                    onValueChange={(value) =>
+                      setEventData({ ...eventData, event_type: value })
                     }
-                    className="h-8 text-sm"
-                  />
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eventTypeOptions.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Genre</Label>

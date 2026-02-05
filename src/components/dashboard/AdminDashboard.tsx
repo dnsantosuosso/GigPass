@@ -33,7 +33,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import tiers from '@/config/tiers.json';
+import cities from '@/config/cities.json';
 import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Tables } from '@/integrations/supabase/types';
@@ -93,7 +101,25 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [ticketPDFs, setTicketPDFs] = useState<TicketPDF[]>([]);
   const [uploadingPDFs, setUploadingPDFs] = useState<File[]>([]);
   const [savingEvent, setSavingEvent] = useState(false);
+  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [availableCities, setAvailableCities] = useState<Array<{ value: string; label: string }>>([]);
   const { toast } = useToast();
+
+  const cityLabels: Record<string, string> = cities.cities.reduce((acc, city) => {
+    acc[city.id] = city.displayName;
+    return acc;
+  }, {} as Record<string, string>);
+
+  const eventTypeOptions = [
+    'Live Music',
+    'Comedy',
+    'Parties',
+    'Theatre',
+    'Sports',
+    'Festival',
+    'Conference',
+    'Workshop',
+  ];
 
   const getTicketPath = (value: string) => {
     if (value.startsWith('http')) {
@@ -264,7 +290,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           event_date: editingEvent.event_date,
           event_type: editingEvent.event_type,
           genre: editingEvent.genre,
-          capacity: editingEvent.capacity,
           image_url: editingEvent.image_url,
         })
         .eq('id', editingEvent.id);
@@ -615,15 +640,30 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 value="events"
                 className="space-y-3 animate-fade-in"
               >
-                {/* Search Input */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search events by name, venue, or genre..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
+                {/* Search and Filters */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search events by name, venue, or genre..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={selectedCity} onValueChange={setSelectedCity}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="All cities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Cities</SelectItem>
+                      {cities.cities.map((city) => (
+                        <SelectItem key={city.id} value={city.id}>
+                          {city.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {loading ? (
@@ -652,7 +692,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                   </Card>
                 ) : (
                   <>
-                  {events.map((event) => (
+                  {events
+                    .filter((event) => 
+                      selectedCity === 'all' || (event as any).city === selectedCity
+                    )
+                    .map((event) => (
                     <Card
                       key={event.id}
                       className="overflow-hidden hover:border-primary/30 transition-colors"
@@ -693,10 +737,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                                 <span className="flex items-center gap-1">
                                   <MapPin className="h-3 w-3" />
                                   {event.venue}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {event.claimed_count}/{event.capacity}
                                 </span>
                               </div>
                             </div>
@@ -790,32 +830,50 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                                   />
                                 </div>
                                 <div>
-                                  <Label className="text-xs">Type</Label>
-                                  <Input
-                                    value={editingEvent.event_type || ''}
-                                    onChange={(e) =>
+                                  <Label className="text-xs">City</Label>
+                                  <Select
+                                    value={(editingEvent as any).city || 'toronto'}
+                                    onValueChange={(value) =>
                                       setEditingEvent({
                                         ...editingEvent,
-                                        event_type: e.target.value,
-                                      })
+                                        city: value,
+                                      } as any)
                                     }
-                                    className="h-8 text-sm"
-                                  />
+                                  >
+                                    <SelectTrigger className="h-8 text-sm">
+                                      <SelectValue placeholder="Select city" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {cities.cities.map((city) => (
+                                        <SelectItem key={city.id} value={city.id}>
+                                          {city.displayName}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-xs">Capacity</Label>
-                                  <Input
-                                    type="number"
-                                    value={editingEvent.capacity}
-                                    onChange={(e) =>
+                                  <Label className="text-xs">Type</Label>
+                                  <Select
+                                    value={editingEvent.event_type || ''}
+                                    onValueChange={(value) =>
                                       setEditingEvent({
                                         ...editingEvent,
-                                        capacity: parseInt(e.target.value),
+                                        event_type: value,
                                       })
                                     }
-                                    className="h-8 text-sm"
-                                    required
-                                  />
+                                  >
+                                    <SelectTrigger className="h-8 text-sm">
+                                      <SelectValue placeholder="Select type..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {eventTypeOptions.map((type) => (
+                                        <SelectItem key={type} value={type}>
+                                          {type}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <div>
                                   <Label className="text-xs">Genre</Label>

@@ -334,18 +334,17 @@ export default function Auth() {
                     {resetEmailSent && ", we've sent a password reset link."}
                   </p>
                 </div>
-                {resetEmailSent && (
-                  <button
-                    onClick={() => {
-                      setResetEmailSent(false);
-                      setIsForgotPassword(false);
-                    }}
-                    className="text-primary hover:underline text-sm"
-                  >
-                    <ArrowLeft className="inline h-4 w-4 mr-1" />
-                    Back to sign in
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    setEmailSent(false);
+                    setResetEmailSent(false);
+                    setIsForgotPassword(false);
+                  }}
+                  className="text-primary hover:underline text-sm"
+                >
+                  <ArrowLeft className="inline h-4 w-4 mr-1" />
+                  Back to sign in
+                </button>
               </div>
             ) : isForgotPassword && forgotPasswordSocialProvider ? (
               <div className="text-center space-y-4 py-4">

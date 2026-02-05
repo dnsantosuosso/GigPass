@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar, MapPin, ArrowLeft, Clock, Ticket, Lock } from 'lucide-react';
+import { Calendar, MapPin, ArrowLeft, Clock, Ticket, Lock, Info } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +37,7 @@ export default function TicketDetail() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [returning, setReturning] = useState(false);
   const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
 
@@ -56,6 +57,73 @@ export default function TicketDetail() {
 
     if (!session?.user) {
       navigate('/auth');
+    }
+  };
+
+  const handleReturnTicket = async () => {
+    if (!ticketClaim || !user) return;
+
+    const confirmReturn = window.confirm(
+      'Are you sure you want to return this ticket? This action cannot be undone.'
+    );
+
+    if (!confirmReturn) return;
+
+    setReturning(true);
+
+    try {
+      // Get the claim with ticket_id
+      const { data: claimData, error: claimError } = await supabase
+        .from('ticket_claims')
+        .select('ticket_id, event_id')
+        .eq('id', ticketClaim.id)
+        .single();
+
+      if (claimError) throw claimError;
+
+      // Delete the claim
+      const { error: deleteError } = await supabase
+        .from('ticket_claims')
+        .delete()
+        .eq('id', ticketClaim.id);
+
+      if (deleteError) throw deleteError;
+
+      // If there's a ticket_id, mark it as unclaimed
+      if (claimData.ticket_id) {
+        const { error: ticketError } = await supabase
+          .from('tickets')
+          .update({
+            is_claimed: false,
+            claimed_by: null,
+            claimed_at: null,
+          })
+          .eq('id', claimData.ticket_id);
+
+        if (ticketError) throw ticketError;
+      }
+
+      // Decrement the event's claimed_count
+      await supabase.rpc('decrement_event_claimed_count', {
+        event_id: claimData.event_id,
+      });
+
+      toast({
+        title: 'Ticket returned',
+        description: 'Your ticket has been returned successfully.',
+      });
+
+      // Navigate back to dashboard
+      navigate('/dashboard');
+    } catch (error: any) {
+      console.error('Error returning ticket:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to return ticket. Please try again.',
+      });
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -187,9 +255,7 @@ export default function TicketDetail() {
                   ? 'Your ticket is ready!'
                   : isEventPast
                   ? 'This event has passed'
-                  : `Ticket will be available ${daysUntilEvent} day${
-                      daysUntilEvent !== 1 ? 's' : ''
-                    } before the event`}
+                  : `Ticket will be available 1 day before the event`}
               </p>
             </div>
 
@@ -368,35 +434,29 @@ export default function TicketDetail() {
                   </Card>
                 )}
 
-                {/* Important Info */}
+                {/* Ticket Details */}
                 <Card className="border-primary/20">
-                  <CardContent className="p-4 space-y-3">
-                    <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-                      Important Information
-                    </h3>
-                    <div className="space-y-2 text-sm">
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary">•</span>
-                        <span>
-                          {isTicketAvailable
-                            ? 'Your ticket is now active and ready to use'
-                            : `Your ticket will be sent via email 1 day before the event`}
-                        </span>
+                  <CardContent className="p-4 space-y-4">
+                    <div>
+                      <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+                        <Info className="h-4 w-4 text-primary" />
+                        Access Details
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        A PDF Digital Ticket will be emailed to you on the day of the show. Please present this ticket at the venue entrance for admission.
                       </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary">•</span>
-                        <span>
-                          Please arrive 30 minutes before the event starts
-                        </span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary">•</span>
-                        <span>Valid ID may be required at entry</span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary">•</span>
-                        <span>Check your email for additional details</span>
-                      </p>
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm">Important Information:</h4>
+                      <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                        <li>Tickets are non-transferable</li>
+                        <li>Valid ID may be required at entry</li>
+                        <li>Arrive 30 minutes before show time</li>
+                        <li>Check your email spam folder if you don't receive the ticket</li>
+                      </ul>
                     </div>
                   </CardContent>
                 </Card>
@@ -420,6 +480,16 @@ export default function TicketDetail() {
                       View Event Details
                     </Link>
                   </Button>
+                  {!isEventPast && (
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      onClick={handleReturnTicket}
+                      disabled={returning}
+                    >
+                      {returning ? 'Returning...' : 'Return Ticket'}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

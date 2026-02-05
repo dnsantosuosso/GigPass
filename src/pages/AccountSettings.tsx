@@ -256,16 +256,13 @@ export default function AccountSettings() {
                 <div>
                   <CardTitle className="text-lg">Profile Information</CardTitle>
                   <CardDescription>
-                    Update your personal details
+                    Your personal details
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <form
-                onSubmit={handleProfileUpdate}
-                className="space-y-4"
-              >
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
@@ -274,8 +271,8 @@ export default function AccountSettings() {
                       type="text"
                       placeholder="First"
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      className="bg-background border-border"
+                      disabled
+                      className="bg-muted border-border cursor-not-allowed"
                     />
                   </div>
                   <div className="space-y-2">
@@ -285,22 +282,17 @@ export default function AccountSettings() {
                       type="text"
                       placeholder="Last"
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className="bg-background border-border"
+                      disabled
+                      className="bg-muted border-border cursor-not-allowed"
                     />
                   </div>
                 </div>
-                <Button
-                  type="submit"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  disabled={updatingProfile}
-                >
-                  {updatingProfile ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Save Profile
-                </Button>
-              </form>
+                <div className="bg-muted/50 border border-border rounded-lg p-3">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Note:</span>Please contact support if you need to update your name.
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

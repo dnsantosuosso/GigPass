@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import * as pdfjsLib from 'pdfjs-dist';
-import { Tables } from '@/integrations/supabase/types';
 import TicketUploadFlow from './TicketUploadFlow';
 import ClaimDetails from './ClaimDetails';
 import ActionButton from '@/components/ui/action-button';
@@ -36,7 +35,14 @@ import ActionButton from '@/components/ui/action-button';
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-type DbEvent = Tables<'events'>;
+interface DbEvent {
+  id: string;
+  title: string;
+  venue: string;
+  event_date: string;
+  image_url: string | null;
+  [key: string]: any;
+}
 
 interface TicketPDF {
   id: string;
@@ -72,7 +78,7 @@ export default function EventAdmin({ event }: EventAdminProps) {
     null
   );
   const [ticketTypes, setTicketTypes] = useState<
-    { id: string; name: string }[]
+    { id: string; name: string; quantity: number; claimed_count: number }[]
   >([]);
   const { toast } = useToast();
   const pageSize = 12;
@@ -105,7 +111,7 @@ export default function EventAdmin({ event }: EventAdminProps) {
     const fetchTypes = async () => {
       const { data, error } = await supabase
         .from('ticket_types')
-        .select('id, name')
+        .select('id, name, quantity')
         .eq('event_id', event.id)
         .order('name', { ascending: true });
 
@@ -115,7 +121,23 @@ export default function EventAdmin({ event }: EventAdminProps) {
         return;
       }
 
-      setTicketTypes(data || []);
+      // Get claimed count for each ticket type
+      const typesWithClaims = await Promise.all(
+        (data || []).map(async (type) => {
+          const { count } = await supabase
+            .from('ticket_claims')
+            .select('id', { count: 'exact', head: true })
+            .eq('event_id', event.id)
+            .eq('ticket_type_id', type.id);
+
+          return {
+            ...type,
+            claimed_count: count || 0,
+          };
+        })
+      );
+
+      setTicketTypes(typesWithClaims);
     };
 
     fetchTypes();
@@ -450,35 +472,61 @@ export default function EventAdmin({ event }: EventAdminProps) {
                   <MapPin className="h-4 w-4" />
                   {event.venue}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <Users className="h-4 w-4" />
-                  {event.claimed_count}/{event.capacity} claimed
-                </span>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats Card */}
+      {/* Ticket Types Stats */}
       <Card>
         <CardContent className="py-4">
+          <h3 className="text-sm font-semibold mb-3">Ticket Types</h3>
+          {ticketTypes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No ticket types defined</p>
+          ) : (
+            <div className="space-y-2">
+              {ticketTypes.map((type) => (
+                <div key={type.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                  <div>
+                    <p className="text-sm font-medium">{type.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {type.claimed_count}/{type.quantity} claimed
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-orange-600">
+                      {type.quantity - type.claimed_count}
+                    </p>
+                    <p className="text-xs text-muted-foreground">available</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* PDF Tickets Stats */}
+      <Card>
+        <CardContent className="py-4">
+          <h3 className="text-sm font-semibold mb-3">Uploaded PDF Tickets</h3>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-2xl font-bold">{totalCount}</p>
-              <p className="text-xs text-muted-foreground">Total Tickets</p>
+              <p className="text-xs text-muted-foreground">Total PDFs</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-green-600">
                 {claimedCount}
               </p>
-              <p className="text-xs text-muted-foreground">Claimed</p>
+              <p className="text-xs text-muted-foreground">Assigned</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-orange-600">
                 {totalCount - claimedCount}
               </p>
-              <p className="text-xs text-muted-foreground">Available</p>
+              <p className="text-xs text-muted-foreground">Unassigned</p>
             </div>
           </div>
         </CardContent>

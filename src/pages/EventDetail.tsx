@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Calendar, MapPin, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Calendar, MapPin, ArrowLeft, AlertCircle, Info, FileText, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
@@ -162,25 +163,6 @@ export default function EventDetail() {
         return;
       }
 
-      // Check event capacity
-      if (!event) {
-        console.error('[EventDetail] Event data not loaded');
-        return;
-      }
-
-      console.log('[EventDetail] Event capacity:', event.capacity);
-      console.log('[EventDetail] Event claimed count:', event.claimed_count);
-
-      if (event.claimed_count >= event.capacity) {
-        console.log('[EventDetail] Event is at full capacity');
-        toast({
-          variant: 'destructive',
-          title: 'Event full',
-          description: 'This event has reached maximum capacity',
-        });
-        return;
-      }
-
       // Get the ticket type to verify it exists and user has access
       const ticketType = ticketTypes.find((tt) => tt.id === ticketTypeId);
       if (!ticketType) {
@@ -195,8 +177,32 @@ export default function EventDetail() {
 
       console.log('[EventDetail] Ticket type:', ticketType.name);
 
-      // Find an available ticket for this event
-      const { data: availableTicket, error: ticketError } = await supabase
+      // Check if there are available tickets based on ticket type capacity
+      const { count: claimedCount } = await supabase
+        .from('ticket_claims')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', id!);
+
+      const totalClaimed = claimedCount || 0;
+      
+      // Calculate total capacity from all ticket types
+      const totalCapacity = ticketTypes.reduce((sum, tt) => sum + tt.quantity, 0);
+
+      console.log('[EventDetail] Total capacity:', totalCapacity);
+      console.log('[EventDetail] Total claimed:', totalClaimed);
+
+      if (totalClaimed >= totalCapacity) {
+        console.log('[EventDetail] Event is at full capacity');
+        toast({
+          variant: 'destructive',
+          title: 'Event full',
+          description: 'This event has reached maximum capacity',
+        });
+        return;
+      }
+
+      // Find an available ticket PDF for this event (optional - for events with uploaded PDFs)
+      const { data: availableTicket } = await supabase
         .from('tickets')
         .select('id')
         .eq('event_id', id!)
@@ -204,30 +210,13 @@ export default function EventDetail() {
         .limit(1)
         .maybeSingle();
 
-      if (ticketError) {
-        console.error(
-          '[EventDetail] Error finding available ticket:',
-          ticketError,
-        );
-        throw ticketError;
-      }
-
-      if (!availableTicket) {
-        toast({
-          variant: 'destructive',
-          title: 'No tickets available',
-          description: 'All tickets for this event have been claimed',
-        });
-        return;
-      }
-
       // Create the ticket claim
       const { error: claimError } = await supabase
         .from('ticket_claims')
         .insert({
           user_id: user.id,
           event_id: id!,
-          ticket_id: availableTicket.id,
+          ticket_id: availableTicket?.id || null,
           created_by_id: user.id,
           created_by_type: 'member',
         });
@@ -237,28 +226,26 @@ export default function EventDetail() {
         throw claimError;
       }
 
-      // Mark the ticket as claimed
-      const { error: markClaimedError } = await supabase
-        .from('tickets')
-        .update({
-          is_claimed: true,
-          claimed_by: user.id,
-          claimed_at: new Date().toISOString(),
-        })
-        .eq('id', availableTicket.id);
+      // If there's a ticket PDF, mark it as claimed
+      if (availableTicket) {
+        const { error: markClaimedError } = await supabase
+          .from('tickets')
+          .update({
+            is_claimed: true,
+            claimed_by: user.id,
+            claimed_at: new Date().toISOString(),
+          })
+          .eq('id', availableTicket.id);
 
-      if (markClaimedError) {
-        console.error(
-          '[EventDetail] Error marking ticket as claimed:',
-          markClaimedError,
-        );
+        if (markClaimedError) {
+          console.error(
+            '[EventDetail] Error marking ticket as claimed:',
+            markClaimedError,
+          );
+        }
       }
 
       console.log('[EventDetail] Ticket claim created successfully');
-
-      // Increment claimed count using RPC function
-      await supabase.rpc('increment_event_claimed_count', { event_id: id });
-      console.log('[EventDetail] Event claimed count incremented');
 
       toast({
         title: 'Ticket claimed!',
@@ -268,6 +255,7 @@ export default function EventDetail() {
 
       fetchClaimedTickets(user.id);
       fetchEvent();
+      fetchTicketTypes();
     } catch (error: any) {
       console.error('[EventDetail] Error claiming ticket:', error);
       const isDuplicate = error?.message?.includes('ticket_claims_user_id_event_id_key');
@@ -282,13 +270,53 @@ export default function EventDetail() {
   };
 
   const handleUnclaimTicket = async () => {
-    if (!user) return;
+    if (!user || !id) return;
 
     console.log('[EventDetail] Starting unclaim process');
     console.log('[EventDetail] Event ID:', id);
     console.log('[EventDetail] User ID:', user.id);
 
     try {
+      // First, get the ticket claim to find the ticket_id
+      const { data: claimData, error: fetchError } = await supabase
+        .from('ticket_claims')
+        .select('ticket_id')
+        .eq('user_id', user.id)
+        .eq('event_id', id)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('[EventDetail] Error fetching ticket claim:', fetchError);
+        throw fetchError;
+      }
+
+      if (!claimData) {
+        console.log('[EventDetail] No ticket claim found');
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'No ticket claim found for this event',
+        });
+        return;
+      }
+
+      // Mark the ticket as unclaimed in tickets table (if there's a PDF)
+      if (claimData.ticket_id) {
+        const { error: ticketUpdateError } = await supabase
+          .from('tickets')
+          .update({
+            is_claimed: false,
+            claimed_by: null,
+            claimed_at: null,
+          })
+          .eq('id', claimData.ticket_id);
+
+        if (ticketUpdateError) {
+          console.error('[EventDetail] Error updating ticket:', ticketUpdateError);
+          throw ticketUpdateError;
+        }
+      }
+
       // Delete the ticket claim
       const { error: deleteError } = await supabase
         .from('ticket_claims')
@@ -297,32 +325,27 @@ export default function EventDetail() {
         .eq('event_id', id);
 
       if (deleteError) {
-        console.error(
-          '[EventDetail] Error deleting ticket claim:',
-          deleteError,
-        );
+        console.error('[EventDetail] Error deleting ticket claim:', deleteError);
         throw deleteError;
       }
 
       console.log('[EventDetail] Ticket claim deleted successfully');
 
-      // Decrement claimed count using RPC function
-      await supabase.rpc('decrement_event_claimed_count', { event_id: id });
-      console.log('[EventDetail] Event claimed count decremented');
-
       toast({
-        title: 'Ticket unclaimed',
-        description: 'Your ticket has been released',
+        title: 'Ticket Returned',
+        description: 'Your ticket has been successfully returned and is now available for others',
       });
 
-      fetchClaimedTickets(user.id);
-      fetchEvent();
+      // Refresh data
+      await fetchClaimedTickets(user.id);
+      await fetchEvent();
+      await fetchTicketTypes();
     } catch (error: any) {
-      console.error('[EventDetail] Error unclaiming ticket:', error);
+      console.error('[EventDetail] Error returning ticket:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error.message || 'Failed to unclaim ticket',
+        description: error.message || 'Failed to return ticket. Please try again.',
       });
     }
   };
@@ -394,7 +417,7 @@ export default function EventDetail() {
       <div className="container mx-auto px-8 py-16">
         <Link
           to="/events"
-          className="inline-flex items-center text-muted-foreground hover:text-primary mb-8"
+          className="mt-8 inline-flex items-center text-muted-foreground hover:text-primary mb-8"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Events
@@ -436,11 +459,26 @@ export default function EventDetail() {
               </div>
             </div>
 
-            <p className="text-lg leading-relaxed">{event.description}</p>
+            {/* Description with better handling for long text */}
+            <div className="prose prose-sm max-w-none">
+              <p className="text-base leading-relaxed whitespace-pre-wrap break-words">
+                {event.description}
+              </p>
+            </div>
           </div>
         </div>
 
-        <Card className="bg-card border-border">
+        {/* Ticket Claimed Status Banner */}
+        {hasClaimedEvent && (
+          <Alert className="mb-6 border-green-500/50 bg-green-500/10">
+            <Info className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-600 font-medium">
+              Ticket Claimed - You have successfully claimed a ticket for this event
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="bg-card border-border mb-6">
           <CardHeader>
             <CardTitle className="text-2xl">Ticket Types</CardTitle>
             <CardDescription>
@@ -489,13 +527,20 @@ export default function EventDetail() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-2xl font-bold">
-                            ${ticketType.price}
-                          </span>
-                          <Badge variant="default">
-                            {availableCount} available
-                          </Badge>
+                        {/* Pricing Display */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg text-muted-foreground line-through">
+                              ${ticketType.price}
+                            </span>
+                            <Badge variant="secondary" className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
+                              Free with Gigpass
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Users className="h-4 w-4" />
+                            <span>{availableCount} available</span>
+                          </div>
                         </div>
 
                         {hasClaimedEvent ? (
@@ -505,7 +550,7 @@ export default function EventDetail() {
                             className="w-full"
                             size="lg"
                           >
-                            Unclaim Ticket
+                            Return Ticket
                           </Button>
                         ) : (
                           <Button
@@ -523,6 +568,39 @@ export default function EventDetail() {
                 })}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Ticket Details Section */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              <CardTitle className="text-xl">Ticket Details</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <Info className="h-4 w-4 text-primary" />
+                Access Details
+              </h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                A PDF Digital Ticket will be emailed to you on the day of the show. Please present this ticket at the venue entrance for admission.
+              </p>
+            </div>
+            
+            <Separator />
+            
+            <div className="space-y-2">
+              <h4 className="font-semibold text-sm">Important Information:</h4>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Tickets are non-transferable</li>
+                <li>Valid ID may be required at entry</li>
+                <li>Arrive 30 minutes before show time</li>
+                <li>Check your email spam folder if you don't receive the ticket</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
       </div>
