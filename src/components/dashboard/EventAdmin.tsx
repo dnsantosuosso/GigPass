@@ -124,15 +124,13 @@ export default function EventAdmin({ event }: EventAdminProps) {
       // Get claimed count for each ticket type
       const typesWithClaims = await Promise.all(
         (data || []).map(async (type) => {
-          const { count } = await supabase
-            .from('ticket_claims')
-            .select('id', { count: 'exact', head: true })
-            .eq('event_id', event.id)
-            .eq('ticket_type_id', type.id);
+          // ticket_claims doesn't have ticket_type_id, so we just return 0 for now
+          // To properly track claims per ticket type, the schema would need to be updated
+          const claimedCount = 0;
 
           return {
             ...type,
-            claimed_count: count || 0,
+            claimed_count: claimedCount,
           };
         })
       );

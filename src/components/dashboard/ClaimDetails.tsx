@@ -19,8 +19,7 @@ interface ClaimData {
   user: {
     id: string;
     email: string;
-    first_name: string | null;
-    last_name: string | null;
+    full_name: string | null;
   } | null;
   event: {
     id: string;
@@ -36,10 +35,6 @@ interface ClaimData {
     claimed_by: string | null;
     claimed_at: string | null;
     created_at: string;
-  } | null;
-  ticket_type: {
-    id: string;
-    name: string;
   } | null;
 }
 
@@ -69,7 +64,7 @@ export default function ClaimDetails({
         setLoading(true);
         const { data: claimData, error: claimError } = await supabase
           .from('ticket_claims')
-          .select('id, claimed_at, user_id, event_id, ticket_id, ticket_type_id')
+          .select('id, claimed_at, user_id, event_id, ticket_id')
           .eq('ticket_id', ticketId)
           .maybeSingle();
 
@@ -79,16 +74,11 @@ export default function ClaimDetails({
           return;
         }
 
-        const [
-          { data: userData },
-          { data: eventData },
-          { data: ticketData },
-          { data: ticketTypeData },
-        ] =
+        const [{ data: userData }, { data: eventData }, { data: ticketData }] =
           await Promise.all([
             supabase
               .from('profiles')
-              .select('id, email, first_name, last_name')
+              .select('id, email, full_name')
               .eq('id', claimData.user_id)
               .maybeSingle(),
             supabase
@@ -103,11 +93,6 @@ export default function ClaimDetails({
               )
               .eq('id', claimData.ticket_id)
               .maybeSingle(),
-            supabase
-              .from('ticket_types')
-              .select('id, name')
-              .eq('id', claimData.ticket_type_id)
-              .maybeSingle(),
           ]);
 
         setClaim({
@@ -117,8 +102,7 @@ export default function ClaimDetails({
             ? {
                 id: userData.id,
                 email: userData.email,
-                first_name: userData.first_name,
-                last_name: userData.last_name,
+                full_name: userData.full_name,
               }
             : null,
           event: eventData
@@ -139,9 +123,6 @@ export default function ClaimDetails({
                 claimed_at: ticketData.claimed_at,
                 created_at: ticketData.created_at,
               }
-            : null,
-          ticket_type: ticketTypeData
-            ? { id: ticketTypeData.id, name: ticketTypeData.name }
             : null,
         });
 
@@ -266,9 +247,7 @@ export default function ClaimDetails({
             </div>
             <p className="text-sm">
               {claim.user
-                ? claim.user.first_name && claim.user.last_name
-                  ? `${claim.user.first_name} ${claim.user.last_name}`
-                  : claim.user.email
+              ? claim.user.full_name || claim.user.email
                 : 'Unknown user'}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -287,9 +266,6 @@ export default function ClaimDetails({
             <p className="text-sm">Ticket ID: {claim.ticket?.id}</p>
             <p className="text-xs text-muted-foreground break-all">
               {claim.ticket?.ticket_pdf_url}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Ticket type: {claim.ticket_type?.name || 'Unknown'}
             </p>
             <p className="text-xs text-muted-foreground">
               Created{' '}

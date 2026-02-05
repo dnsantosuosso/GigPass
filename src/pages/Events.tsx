@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Calendar, MapPin, Users, Ticket, Loader2, Search, Filter, MapPinIcon } from 'lucide-react';
+import { Calendar, MapPin, Users, Ticket, Loader2, Search, Filter } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -24,7 +24,6 @@ import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useToast } from '@/hooks/use-toast';
-import cities from '@/config/cities.json';
 import {
   Pagination,
   PaginationContent,
@@ -60,9 +59,7 @@ export default function Events() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCity, setSelectedCity] = useState('toronto');
   const [selectedEventType, setSelectedEventType] = useState('all');
-  const [availableCities, setAvailableCities] = useState<Array<{ value: string; label: string }>>([]);
   const [availableEventTypes, setAvailableEventTypes] = useState<Array<{ value: string; label: string }>>([]);
   const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
@@ -70,12 +67,6 @@ export default function Events() {
   const { toast } = useToast();
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
-
-  // City mapping from config
-  const cityLabels: Record<string, string> = cities.cities.reduce((acc, city) => {
-    acc[city.id] = city.displayName;
-    return acc;
-  }, {} as Record<string, string>);
 
 
   useEffect(() => {
@@ -96,15 +87,8 @@ export default function Events() {
   }, []);
 
   useEffect(() => {
-    fetchAvailableCities();
-  }, []);
-
-  useEffect(() => {
-    // Refetch event types whenever the city changes
-    // Also reset the event type filter to 'all' when switching cities
-    setSelectedEventType('all');
     fetchAvailableEventTypes();
-  }, [selectedCity]);
+  }, []);
 
   useEffect(() => {
     // Reset to page 1 when filters change
@@ -113,50 +97,19 @@ export default function Events() {
     } else {
       fetchEvents();
     }
-  }, [selectedCity, selectedEventType, searchQuery]);
+  }, [selectedEventType, searchQuery]);
 
   useEffect(() => {
     // Fetch when page changes
     fetchEvents();
   }, [currentPage]);
 
-  const fetchAvailableCities = async () => {
-    try {
-      // Get distinct cities from events that have upcoming events
-      const { data, error } = await supabase
-        .from('events')
-        .select('city')
-        .gte('event_date', new Date().toISOString());
-
-      if (error) throw error;
-
-      // Get unique cities
-      const uniqueCities = Array.from(new Set(data?.map(event => event.city).filter(Boolean))) as string[];
-      
-      // Map to city objects with labels
-      const cities = uniqueCities.map(city => ({
-        value: city,
-        label: cityLabels[city] || city.charAt(0).toUpperCase() + city.slice(1),
-      }));
-
-      setAvailableCities(cities);
-
-      // If selected city is not in available cities, select the first one
-      if (cities.length > 0 && !cities.find(c => c.value === selectedCity)) {
-        setSelectedCity(cities[0].value);
-      }
-    } catch (error) {
-      console.error('Error fetching cities:', error);
-    }
-  };
-
   const fetchAvailableEventTypes = async () => {
     try {
-      // Get distinct event types from upcoming events in the SELECTED CITY
+      // Get distinct event types from upcoming events
       const { data, error } = await supabase
         .from('events')
         .select('event_type')
-        .eq('city', selectedCity)
         .gte('event_date', new Date().toISOString())
         .not('event_type', 'is', null);
 
@@ -190,7 +143,6 @@ export default function Events() {
       let query = supabase
         .from('events')
         .select('*', { count: 'exact' })
-        .eq('city', selectedCity)
         .gte('event_date', new Date().toISOString());
 
       // Apply event type filter server-side
@@ -387,32 +339,13 @@ export default function Events() {
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <MapPinIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl md:text-3xl font-bold text-gradient">
-                Events in {cityLabels[selectedCity] || 'Your City'}
-              </h1>
-            </div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gradient mb-2">
+              Upcoming Events
+            </h1>
             <p className="text-sm text-muted-foreground">
               Discover exclusive live music experiences and claim your tickets
             </p>
           </div>
-          
-          {/* City Switcher */}
-          {availableCities.length > 1 && (
-            <Select value={selectedCity} onValueChange={setSelectedCity}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Select city" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableCities.map((city) => (
-                  <SelectItem key={city.value} value={city.value}>
-                    {city.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
 
         {/* Search and Filters */}
