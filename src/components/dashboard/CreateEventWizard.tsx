@@ -370,7 +370,7 @@ export default function CreateEventWizard({
                 const [copiedPage] = await singlePagePdf.copyPages(srcDoc, [pageNum - 1]);
                 singlePagePdf.addPage(copiedPage);
                 const pdfBytes = await singlePagePdf.save();
-                blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' });
               } catch {
                 // Fallback: render page as high-res image if pdf-lib fails (e.g. encrypted PDFs)
                 const srcPdf = await pdfjsLib.getDocument({ data: originalPdfBytes.slice(0) }).promise;
@@ -407,7 +407,7 @@ export default function CreateEventWizard({
                 });
 
                 const pdfBytes = await newPdf.save();
-                blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' });
               }
             }
 

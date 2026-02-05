@@ -210,7 +210,7 @@ export default function TicketUploadFlow({
             const [copiedPage] = await singlePagePdf.copyPages(srcDoc, [pageNum - 1]);
             singlePagePdf.addPage(copiedPage);
             const pdfBytes = await singlePagePdf.save();
-            blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' });
           } catch {
             // Fallback: render page as high-res image if pdf-lib copy fails
             const page = await srcPdf.getPage(pageNum);
@@ -246,7 +246,7 @@ export default function TicketUploadFlow({
             });
 
             const pdfBytes = await newPdf.save();
-            blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' });
           }
         }
 
