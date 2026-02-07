@@ -536,6 +536,8 @@ export default function Auth() {
                     onClick={() => {
                       const nextIsSignUp = !isSignUp;
                       setIsSignUp(nextIsSignUp);
+                      setEmail('');
+                      setPassword('');
                       setEmailSent(false);
                       setResetEmailSent(false);
                       setIsForgotPassword(false);
