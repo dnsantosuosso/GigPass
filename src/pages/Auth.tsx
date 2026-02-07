@@ -58,6 +58,16 @@ export default function Auth() {
   useEffect(() => {
     setIsSignUp(mode === 'signup');
     setIsResetMode(mode === 'reset');
+    // Reset all form states when mode changes via URL
+    setEmail('');
+    setPassword('');
+    setEmailSent(false);
+    setResetEmailSent(false);
+    setIsForgotPassword(false);
+    setForgotPasswordSocialProvider(null);
+    setPasswordResetSuccess(false);
+    setNewPassword('');
+    setConfirmPassword('');
   }, [mode]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
