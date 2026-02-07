@@ -610,13 +610,13 @@ export default function Events() {
             className="mb-4"
           >
             <TabsList className="grid w-full max-w-xs grid-cols-2">
-              <TabsTrigger value="for-you" className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
-                For You
-              </TabsTrigger>
               <TabsTrigger value="all" className="flex items-center gap-1.5">
                 <ListFilter className="h-3.5 w-3.5" />
                 All Events
+              </TabsTrigger>
+              <TabsTrigger value="for-you" className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                For You
               </TabsTrigger>
             </TabsList>
           </Tabs>
