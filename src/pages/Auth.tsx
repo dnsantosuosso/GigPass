@@ -45,6 +45,7 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [accountExists, setAccountExists] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -68,15 +69,17 @@ export default function Auth() {
     setPasswordResetSuccess(false);
     setNewPassword('');
     setConfirmPassword('');
+    setAccountExists(false);
   }, [mode]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAccountExists(false);
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -85,6 +88,13 @@ export default function Auth() {
         });
 
         if (error) throw error;
+
+        // Check if user already exists (Supabase returns user with identities = [] for existing accounts)
+        if (data?.user && data.user.identities && data.user.identities.length === 0) {
+          setAccountExists(true);
+          setLoading(false);
+          return;
+        }
 
         setEmailSent(true);
         toast({
@@ -105,11 +115,21 @@ export default function Auth() {
         });
       }
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message,
-      });
+      // Also check error message for existing user patterns
+      const errorMsg = error.message?.toLowerCase() || '';
+      if (isSignUp && (
+        errorMsg.includes('already registered') ||
+        errorMsg.includes('already exists') ||
+        errorMsg.includes('user already')
+      )) {
+        setAccountExists(true);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: error.message,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -325,6 +345,43 @@ export default function Auth() {
                   Update Password
                 </Button>
               </form>
+            ) : accountExists ? (
+              <div className="text-center space-y-4 py-4">
+                <div className="mx-auto w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center">
+                  <AlertCircle className="h-6 w-6 text-amber-500" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold">Account Already Exists</h3>
+                  <p className="text-muted-foreground text-sm">
+                    An account with{' '}
+                    <span className="font-medium text-foreground">{email}</span>{' '}
+                    already exists. Please sign in instead.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setAccountExists(false);
+                    setIsSignUp(false);
+                    setPassword('');
+                    setSearchParams({});
+                  }}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Sign In
+                </Button>
+                <button
+                  onClick={() => {
+                    setAccountExists(false);
+                    setIsSignUp(false);
+                    setPassword('');
+                    setSearchParams({});
+                  }}
+                  className="text-primary hover:underline text-sm"
+                >
+                  <ArrowLeft className="inline h-4 w-4 mr-1" />
+                  Go to Sign In
+                </button>
+              </div>
             ) : emailSent || resetEmailSent ? (
               <div className="text-center space-y-4 py-4">
                 <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
@@ -553,6 +610,7 @@ export default function Auth() {
                       setIsForgotPassword(false);
                       setForgotPasswordSocialProvider(null);
                       setPasswordResetSuccess(false);
+                      setAccountExists(false);
                       if (nextIsSignUp) {
                         setSearchParams({ mode: 'signup' });
                       } else {
