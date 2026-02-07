@@ -355,17 +355,24 @@ export default function TicketDetail() {
                           </div>
                         </div>
 
-                        <div className="flex items-start gap-3">
-                          <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            `${ticketClaim.event.venue}, ${ticketClaim.event.address}`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-start gap-3 group cursor-pointer"
+                        >
+                          <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
                           <div>
-                            <p className="font-medium">
+                            <p className="font-medium group-hover:text-primary transition-colors">
                               {ticketClaim.event.venue}
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-muted-foreground group-hover:text-primary/70 transition-colors">
                               {ticketClaim.event.address}
                             </p>
                           </div>
-                        </div>
+                        </a>
 
                         <div className="flex items-start gap-3">
                           <Clock className="w-5 h-5 text-primary shrink-0 mt-0.5" />
