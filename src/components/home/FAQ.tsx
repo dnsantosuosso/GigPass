@@ -20,7 +20,7 @@ const faqs = [
   },
   {
     question: "How many tickets can I claim?",
-    answer: "You can claim unlimited tickets each month as long as you have an active membership."
+    answer: "You can claim unlimited tickets each month as long as you have an active membership, but only one ticket per event."
   },
   {
     question: "Can I cancel anytime?",
