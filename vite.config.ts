@@ -5,14 +5,19 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load any VITE_* vars from .env files (when present)
+  // Load env vars when present (in this environment they may be missing)
   const env = loadEnv(mode, process.cwd(), '');
 
-  // In Lovable Cloud, these are provided as runtime environment variables
-  // even when a .env file is missing.
-  const supabaseUrl = env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-  const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
-  const projectId = env.VITE_SUPABASE_PROJECT_ID || process.env.SUPABASE_PROJECT_ID || '';
+  // Hard fallback to prevent a blank screen if env injection fails.
+  // (Publishable key only — safe to ship in frontend code.)
+  const FALLBACK_SUPABASE_URL = 'https://jlkdqauiroeyyfmjtqgq.supabase.co';
+  const FALLBACK_SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsa2RxYXVpcm9leXlmbWp0cWdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNDg1NTYsImV4cCI6MjA3ODcyNDU1Nn0.y5y3Qk1j6_SBSONMyX0EGUTx7_qfuR2cWLkO3QbEPtY';
+  const FALLBACK_SUPABASE_PROJECT_ID = 'jlkdqauiroeyyfmjtqgq';
+
+  const supabaseUrl = env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_SUPABASE_URL;
+  const supabaseKey =
+    env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+  const projectId = env.VITE_SUPABASE_PROJECT_ID || process.env.SUPABASE_PROJECT_ID || FALLBACK_SUPABASE_PROJECT_ID;
 
   return {
     server: {
