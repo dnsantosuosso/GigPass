@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
@@ -21,6 +21,7 @@ import { ModernSidebar } from '@/components/layout/ModernSidebar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useEventInteractions } from '@/hooks/useEventInteractions';
 import { Tables } from '@/integrations/supabase/types';
 
 type DbEvent = Tables<'events'>;
@@ -48,6 +49,8 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
+  const { recordInteraction } = useEventInteractions();
+  const hasTrackedView = useRef(false);
 
   useEffect(() => {
     checkAuth();
@@ -56,6 +59,14 @@ export default function EventDetail() {
       fetchTicketTypes();
     }
   }, [id]);
+
+  // Track event view for personalization
+  useEffect(() => {
+    if (id && user && !hasTrackedView.current) {
+      hasTrackedView.current = true;
+      recordInteraction(id, 'view');
+    }
+  }, [id, user, recordInteraction]);
 
   const checkAuth = async () => {
     const {
