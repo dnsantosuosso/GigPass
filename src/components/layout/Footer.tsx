@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
-import { Instagram, Music, MessageCircle, Facebook } from "lucide-react";
+import { Instagram, Music, MessageCircle, Facebook, Mail, MapPin } from "lucide-react";
 
 export const Footer = () => {
   return (
     <footer className="bg-card border-t border-border py-12">
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-3 gap-8 mb-8">
+        <div className="grid md:grid-cols-4 gap-8 mb-8">
           <div>
             <h3 className="text-2xl font-bold text-primary mb-4">Gigpass</h3>
             <p className="text-muted-foreground">
@@ -50,9 +50,23 @@ export const Footer = () => {
                 <Facebook className="w-6 h-6" />
               </a>
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              Help: support@gigpass.io
-            </p>
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-foreground mb-4">Contact Us</h4>
+            <div className="space-y-3">
+              <a 
+                href="mailto:support@gigpass.io" 
+                className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Mail className="w-4 h-4" />
+                support@gigpass.io
+              </a>
+              <div className="flex items-start gap-2 text-muted-foreground">
+                <MapPin className="w-4 h-4 mt-0.5" />
+                <span>Toronto & Vancouver, Canada</span>
+              </div>
+            </div>
           </div>
         </div>
         
