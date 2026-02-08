@@ -30,30 +30,53 @@ export const useTotalSavings = (user: User | null): SavingsData => {
       setLoading(true);
       setError(null);
 
-      // Fetch all ticket claims with their savings data
-      const { data, error: fetchError } = await supabase
+      // Fetch all ticket claims with their event's ticket types to calculate savings
+      const { data: claims, error: claimsError } = await supabase
         .from('ticket_claims')
-        .select('full_ticket_price, member_price_paid')
+        .select('id, event_id')
         .eq('user_id', user.id);
 
-      if (fetchError) throw fetchError;
+      if (claimsError) throw claimsError;
+
+      if (!claims || claims.length === 0) {
+        setTotalSavings(0);
+        setEventsAttended(0);
+        setLoading(false);
+        return;
+      }
+
+      // Get unique event IDs
+      const eventIds = [...new Set(claims.map(c => c.event_id))];
+
+      // Fetch ticket types for these events to get prices
+      const { data: ticketTypes, error: typesError } = await supabase
+        .from('ticket_types')
+        .select('event_id, price')
+        .in('event_id', eventIds);
+
+      if (typesError) throw typesError;
+
+      // Build a map of event_id -> minimum ticket price
+      const eventPriceMap: Record<string, number> = {};
+      (ticketTypes || []).forEach((tt: any) => {
+        const price = Number(tt.price) || 0;
+        if (!eventPriceMap[tt.event_id] || price < eventPriceMap[tt.event_id]) {
+          eventPriceMap[tt.event_id] = price;
+        }
+      });
 
       let savings = 0;
       let attended = 0;
       let missingData = false;
 
-      (data || []).forEach((claim: any) => {
-        const fullPrice = Number(claim.full_ticket_price) || 0;
-        const memberPaid = Number(claim.member_price_paid) || 0;
+      claims.forEach((claim) => {
+        const fullPrice = eventPriceMap[claim.event_id];
 
-        // Only count if we have valid price data
-        if (fullPrice > 0) {
-          // Savings = max(0, full_price - member_price_paid)
-          const eventSavings = Math.max(0, fullPrice - memberPaid);
-          savings += eventSavings;
+        if (fullPrice && fullPrice > 0) {
+          // Member pays $0, savings = full price
+          savings += fullPrice;
           attended++;
         } else {
-          // Track that some events don't have price data
           missingData = true;
         }
       });
