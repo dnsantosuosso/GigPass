@@ -8,7 +8,7 @@ interface TotalSavingsCardProps {
 }
 
 export function TotalSavingsCard({ savingsData }: TotalSavingsCardProps) {
-  const { totalSavings, eventsAttended, loading, error, hasMissingPriceData } = savingsData;
+  const { totalSavings, totalTicketValue, subscriptionCost, eventsAttended, loading, error, hasMissingPriceData } = savingsData;
 
   return (
     <Card className="bg-card border-border overflow-hidden">
@@ -53,18 +53,32 @@ export function TotalSavingsCard({ savingsData }: TotalSavingsCardProps) {
             </div>
           </div>
         ) : (
-          <div className="py-2">
-            <div className="flex items-baseline gap-2 mb-2">
+          <div className="py-2 space-y-3">
+            <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-primary">
                 {formatCurrency(totalSavings)}
               </span>
               <span className="text-sm text-muted-foreground">saved</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Across {eventsAttended} event{eventsAttended !== 1 ? 's' : ''} attended
-            </p>
+            
+            {/* Breakdown */}
+            <div className="text-sm text-muted-foreground space-y-1 border-t border-border pt-3">
+              <div className="flex justify-between">
+                <span>Ticket value ({eventsAttended} event{eventsAttended !== 1 ? 's' : ''})</span>
+                <span className="text-foreground">{formatCurrency(totalTicketValue)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Membership cost</span>
+                <span className="text-foreground">-{formatCurrency(subscriptionCost)}</span>
+              </div>
+              <div className="flex justify-between font-medium border-t border-border pt-1 mt-1">
+                <span className="text-foreground">Net savings</span>
+                <span className="text-primary">{formatCurrency(totalSavings)}</span>
+              </div>
+            </div>
+
             {hasMissingPriceData && (
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
                 Some events may not be included due to missing price data.
               </p>
