@@ -221,16 +221,17 @@ export default function EventDetail() {
         .limit(1)
         .maybeSingle();
 
-      // Create the ticket claim
+      // Create the ticket claim with savings tracking
+      // Member pays $0, full price is from ticket type
       const { error: claimError } = await supabase
         .from('ticket_claims')
         .insert({
           user_id: user.id,
           event_id: id!,
           ticket_id: availableTicket?.id || null,
-          created_by_id: user.id,
-          created_by_type: 'member',
-        });
+          full_ticket_price: ticketType.price,
+          member_price_paid: 0, // Members get free access via subscription
+        } as any);
 
       if (claimError) {
         console.error('[EventDetail] Error creating ticket claim:', claimError);

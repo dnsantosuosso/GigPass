@@ -93,21 +93,27 @@ export type Database = {
         Row: {
           claimed_at: string | null
           event_id: string
+          full_ticket_price: number | null
           id: string
+          member_price_paid: number | null
           ticket_id: string
           user_id: string
         }
         Insert: {
           claimed_at?: string | null
           event_id: string
+          full_ticket_price?: number | null
           id?: string
+          member_price_paid?: number | null
           ticket_id: string
           user_id: string
         }
         Update: {
           claimed_at?: string | null
           event_id?: string
+          full_ticket_price?: number | null
           id?: string
+          member_price_paid?: number | null
           ticket_id?: string
           user_id?: string
         }

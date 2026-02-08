@@ -4,7 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useTotalSavings } from '@/hooks/useTotalSavings';
 import { ModernSidebar } from '@/components/layout/ModernSidebar';
+import { TotalSavingsCard } from '@/components/account/TotalSavingsCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +33,7 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const { role } = useUserRole(session);
   const { displayName } = useUserProfile(user);
+  const savingsData = useTotalSavings(user);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -245,6 +248,9 @@ export default function AccountSettings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Total Savings Card */}
+          <TotalSavingsCard savingsData={savingsData} />
 
           {/* Profile Card */}
           <Card className="bg-card border-border">
