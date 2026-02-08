@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
+import tiers from '@/config/tiers.json';
+
+// Get monthly subscription price from tiers config
+const MONTHLY_SUBSCRIPTION_PRICE = tiers.tiers[0]?.price || 25;
 
 export interface SavingsData {
   totalSavings: number;
+  totalTicketValue: number;
+  subscriptionCost: number;
   eventsAttended: number;
   loading: boolean;
   error: string | null;
@@ -13,6 +19,8 @@ export interface SavingsData {
 
 export const useTotalSavings = (user: User | null): SavingsData => {
   const [totalSavings, setTotalSavings] = useState(0);
+  const [totalTicketValue, setTotalTicketValue] = useState(0);
+  const [subscriptionCost, setSubscriptionCost] = useState(0);
   const [eventsAttended, setEventsAttended] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +29,8 @@ export const useTotalSavings = (user: User | null): SavingsData => {
   const fetchSavings = useCallback(async () => {
     if (!user) {
       setTotalSavings(0);
+      setTotalTicketValue(0);
+      setSubscriptionCost(0);
       setEventsAttended(0);
       setLoading(false);
       return;
@@ -40,6 +50,8 @@ export const useTotalSavings = (user: User | null): SavingsData => {
 
       if (!claims || claims.length === 0) {
         setTotalSavings(0);
+        setTotalTicketValue(0);
+        setSubscriptionCost(MONTHLY_SUBSCRIPTION_PRICE);
         setEventsAttended(0);
         setLoading(false);
         return;
@@ -65,7 +77,7 @@ export const useTotalSavings = (user: User | null): SavingsData => {
         }
       });
 
-      let savings = 0;
+      let ticketValue = 0;
       let attended = 0;
       let missingData = false;
 
@@ -73,15 +85,19 @@ export const useTotalSavings = (user: User | null): SavingsData => {
         const fullPrice = eventPriceMap[claim.event_id];
 
         if (fullPrice && fullPrice > 0) {
-          // Member pays $0, savings = full price
-          savings += fullPrice;
+          ticketValue += fullPrice;
           attended++;
         } else {
           missingData = true;
         }
       });
 
-      setTotalSavings(savings);
+      // Calculate net savings: ticket value minus subscription cost
+      const netSavings = Math.max(0, ticketValue - MONTHLY_SUBSCRIPTION_PRICE);
+
+      setTotalTicketValue(ticketValue);
+      setSubscriptionCost(MONTHLY_SUBSCRIPTION_PRICE);
+      setTotalSavings(netSavings);
       setEventsAttended(attended);
       setHasMissingPriceData(missingData);
     } catch (err: any) {
@@ -98,6 +114,8 @@ export const useTotalSavings = (user: User | null): SavingsData => {
 
   return {
     totalSavings,
+    totalTicketValue,
+    subscriptionCost,
     eventsAttended,
     loading,
     error,
